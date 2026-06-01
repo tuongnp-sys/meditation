@@ -54,9 +54,11 @@ const FLOATING_TEXT_RISE = 48;
 const PROTECTIVE_CHARGES_MAX = 2;
 const SCORE_PER_LAYER_ASCEND = 50;
 
-/** Layout reference — logical game coordinates scale with CSS size up to this width. */
-const CANVAS_MAX_WIDTH = 900;
-const CANVAS_ASPECT = 520 / 900;
+/** Layout reference — game logic always uses this coordinate space; CSS scales display. */
+const CANVAS_REF_WIDTH = 900;
+const CANVAS_REF_HEIGHT = 520;
+const CANVAS_MAX_WIDTH = CANVAS_REF_WIDTH;
+const CANVAS_ASPECT = CANVAS_REF_HEIGHT / CANVAS_REF_WIDTH;
 const USERNAME_STORAGE_KEY = 'meditation_username';
 
 const GameState = Object.freeze({
@@ -73,8 +75,8 @@ const GameState = Object.freeze({
 const canvas = document.getElementById('game-canvas');
 const ctx = canvas.getContext('2d');
 
-let logicalWidth = CANVAS_MAX_WIDTH;
-let logicalHeight = Math.round(CANVAS_MAX_WIDTH * CANVAS_ASPECT);
+let logicalWidth = CANVAS_REF_WIDTH;
+let logicalHeight = CANVAS_REF_HEIGHT;
 let resizeDebounceTimer = null;
 
 const authPanel = document.getElementById('auth-panel');
@@ -346,22 +348,39 @@ function syncGameViewport() {
   const landscape = isLandscapeLayout();
   const mobilePlaying = mobile && isPlaying();
 
-  const statsH = gameStatsBar?.offsetHeight || 52;
-  const controlsReserve = mobilePlaying ? 80 : 0;
-  const chromePad = mobilePlaying ? 12 : 40;
+  const statsH =
+    mobilePlaying && gameStatsBar && !gameStatsBar.classList.contains('is-hidden')
+      ? gameStatsBar.offsetHeight
+      : mobile
+        ? 36
+        : 52;
+  const controlsReserve = mobilePlaying ? (landscape ? 58 : 68) : 0;
+  const chromePad = mobilePlaying ? 6 : 24;
 
   let maxH;
+  let maxW = CANVAS_MAX_WIDTH;
   if (landscape && mobile) {
-    maxH = Math.max(150, vh - statsH - controlsReserve - chromePad);
+    maxH = Math.max(200, vh - statsH - controlsReserve - chromePad);
+    maxW = Math.min(CANVAS_MAX_WIDTH, Math.floor(window.innerWidth - 16));
   } else if (mobile) {
-    const headerReserve = mobilePlaying ? 8 : 100;
-    maxH = Math.max(340, vh - statsH - controlsReserve - headerReserve - chromePad);
-    maxH = Math.max(maxH, Math.floor(vh * 0.66));
+    const headerReserve = mobilePlaying ? 4 : 88;
+    maxH = vh - statsH - controlsReserve - headerReserve - chromePad;
+    maxH = Math.max(380, maxH);
+    maxH = Math.max(maxH, Math.floor(vh * 0.74));
+    maxW = Math.min(CANVAS_MAX_WIDTH, Math.floor(window.innerWidth - 12));
   } else {
-    maxH = Math.min(560, Math.max(360, Math.floor(vh * 0.55)));
+    maxW = Math.min(CANVAS_MAX_WIDTH, Math.floor(window.innerWidth - 40));
+    maxH = Math.round(maxW * CANVAS_ASPECT);
+    const vhCap = Math.floor(vh * 0.82);
+    if (maxH > vhCap) {
+      maxH = vhCap;
+      maxW = Math.round(maxH / CANVAS_ASPECT);
+    }
+    maxH = Math.max(480, maxH);
   }
 
   document.documentElement.style.setProperty('--game-stage-max-h', `${maxH}px`);
+  document.documentElement.style.setProperty('--game-stage-max-w', `${maxW}px`);
 
   if (gamePlayStack) {
     gamePlayStack.classList.toggle('game-layout-landscape', landscape && mobile);
@@ -451,13 +470,11 @@ function syncShockwaveButton() {
   const ready = haloEnergy >= HALO_SHOCKWAVE_COST;
   if (showMobile) {
     touchShockwave.removeAttribute('hidden');
-    touchShockwave.classList.remove('is-hidden');
     touchShockwave.disabled = !ready;
     touchShockwave.classList.toggle('is-ready', ready);
     touchShockwave.classList.toggle('touch-btn-shockwave--dim', !ready);
   } else {
-    touchShockwave.classList.add('is-hidden');
-    touchShockwave.setAttribute('hidden', '');
+    touchShockwave.hidden = true;
     touchShockwave.disabled = true;
     touchShockwave.classList.remove('is-ready', 'touch-btn-shockwave--dim');
   }
@@ -555,33 +572,29 @@ function resizeCanvas() {
       ? maxHFromCss
       : Math.round(maxW * CANVAS_ASPECT));
 
-  const mobile = isMobileViewport();
-  const landscape = isLandscapeLayout();
-  let cssWidth;
-  let cssHeight;
+  const maxWCap = parseInt(
+    getComputedStyle(document.documentElement).getPropertyValue('--game-stage-max-w'),
+    10
+  );
+  const boxW =
+    Number.isFinite(maxWCap) && maxWCap > 0
+      ? Math.min(maxW, maxWCap, Math.floor(container.clientWidth) || maxW)
+      : Math.min(maxW, Math.floor(container.clientWidth) || CANVAS_MAX_WIDTH);
 
-  if (mobile && maxH > 0) {
-    cssHeight = maxH;
-    cssWidth = Math.round(cssHeight / CANVAS_ASPECT);
-    if (cssWidth > maxW) {
-      cssWidth = Math.min(maxW, CANVAS_MAX_WIDTH);
-      cssHeight = Math.round(cssWidth * CANVAS_ASPECT);
-    }
-  } else {
-    cssWidth = Math.min(maxW, CANVAS_MAX_WIDTH);
+  let cssHeight = maxH > 0 ? maxH : Math.round(boxW * CANVAS_ASPECT);
+  let cssWidth = Math.round(cssHeight / CANVAS_ASPECT);
+  if (cssWidth > boxW) {
+    cssWidth = boxW;
     cssHeight = Math.round(cssWidth * CANVAS_ASPECT);
-    if (maxH > 0 && cssHeight > maxH) {
-      cssHeight = maxH;
-      cssWidth = Math.round(cssHeight / CANVAS_ASPECT);
-    }
   }
 
-  cssWidth = Math.max(landscape && mobile ? 280 : 240, cssWidth);
-  cssHeight = Math.max(landscape && mobile ? 162 : 139, cssHeight);
-  cssWidth = Math.min(cssWidth, CANVAS_MAX_WIDTH);
+  const minW = isMobileViewport() ? 260 : 320;
+  cssWidth = Math.max(minW, Math.min(cssWidth, CANVAS_MAX_WIDTH));
+  cssHeight = Math.round(cssWidth * CANVAS_ASPECT);
 
   if (gameStageViewport) {
     gameStageViewport.style.height = `${cssHeight}px`;
+    gameStageViewport.style.width = `${cssWidth}px`;
   }
   if (canvasWrap) {
     canvasWrap.style.width = `${cssWidth}px`;
@@ -589,21 +602,22 @@ function resizeCanvas() {
   }
 
   const dpr = window.devicePixelRatio || 1;
+  const scaleX = cssWidth / CANVAS_REF_WIDTH;
+  const scaleY = cssHeight / CANVAS_REF_HEIGHT;
 
-  logicalWidth = cssWidth;
-  logicalHeight = cssHeight;
+  logicalWidth = CANVAS_REF_WIDTH;
+  logicalHeight = CANVAS_REF_HEIGHT;
 
   canvas.width = Math.round(cssWidth * dpr);
   canvas.height = Math.round(cssHeight * dpr);
   canvas.style.width = `${cssWidth}px`;
   canvas.style.height = `${cssHeight}px`;
 
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.scale(dpr, dpr);
+  ctx.setTransform(scaleX * dpr, 0, 0, scaleY * dpr, 0, 0);
 
-  player?.onCanvasResize(logicalWidth, logicalHeight);
-  world?.setDimensions(logicalWidth, logicalHeight);
-  background?.setDimensions(logicalWidth, logicalHeight);
+  player?.onCanvasResize(CANVAS_REF_WIDTH, CANVAS_REF_HEIGHT);
+  world?.setDimensions(CANVAS_REF_WIDTH, CANVAS_REF_HEIGHT);
+  background?.setDimensions(CANVAS_REF_WIDTH, CANVAS_REF_HEIGHT);
 }
 
 function scheduleResizeCanvas() {
