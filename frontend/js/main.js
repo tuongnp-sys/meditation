@@ -295,12 +295,16 @@ function showGameControls(visible) {
   }
   syncMobilePlayChrome(visible);
   syncTouchControls(visible);
+  if (visible && isMobileViewport()) {
+    requestAnimationFrame(syncGameViewport);
+  }
 }
 
 function syncMobilePlayChrome(playingVisible) {
   if (!gameSection) return;
   const mobilePlaying = playingVisible && isPlaying() && isMobileViewport();
   gameSection.classList.toggle('is-playing-mobile', mobilePlaying);
+  document.body.classList.toggle('game-mobile-play', mobilePlaying);
 
   if (gameControlsFloat) {
     if (mobilePlaying) {
@@ -334,18 +338,25 @@ function isLandscapeLayout() {
   return isMobileViewport() && window.matchMedia('(orientation: landscape)').matches;
 }
 
-/** Fit canvas to viewport — portrait taller, landscape contained, desktop scrollable. */
+/** Fit canvas to viewport — portrait taller, landscape column layout, desktop scrollable. */
 function syncGameViewport() {
   const vv = window.visualViewport;
   const vh = Math.floor(vv?.height ?? window.innerHeight);
   const mobile = isMobileViewport();
   const landscape = isLandscapeLayout();
+  const mobilePlaying = mobile && isPlaying();
+
+  const statsH = gameStatsBar?.offsetHeight || 52;
+  const controlsReserve = mobilePlaying ? 80 : 0;
+  const chromePad = mobilePlaying ? 12 : 40;
 
   let maxH;
-  if (landscape) {
-    maxH = Math.max(180, vh - 72);
+  if (landscape && mobile) {
+    maxH = Math.max(150, vh - statsH - controlsReserve - chromePad);
   } else if (mobile) {
-    maxH = Math.max(300, Math.floor(vh * 0.52));
+    const headerReserve = mobilePlaying ? 8 : 100;
+    maxH = Math.max(340, vh - statsH - controlsReserve - headerReserve - chromePad);
+    maxH = Math.max(maxH, Math.floor(vh * 0.66));
   } else {
     maxH = Math.min(560, Math.max(360, Math.floor(vh * 0.55)));
   }
@@ -353,8 +364,9 @@ function syncGameViewport() {
   document.documentElement.style.setProperty('--game-stage-max-h', `${maxH}px`);
 
   if (gamePlayStack) {
-    gamePlayStack.classList.toggle('game-layout-landscape', landscape);
+    gamePlayStack.classList.toggle('game-layout-landscape', landscape && mobile);
     gamePlayStack.classList.toggle('game-layout-portrait', mobile && !landscape);
+    gamePlayStack.classList.toggle('game-layout-mobile', mobile);
   }
 
   scheduleResizeCanvas();
@@ -438,19 +450,16 @@ function syncShockwaveButton() {
     shouldUseTouchControls() && isMobileViewport() && isPlaying() && !isPaused;
   const ready = haloEnergy >= HALO_SHOCKWAVE_COST;
   if (showMobile) {
+    touchShockwave.removeAttribute('hidden');
     touchShockwave.classList.remove('is-hidden');
     touchShockwave.disabled = !ready;
     touchShockwave.classList.toggle('is-ready', ready);
-    if (ready || isLandscapeLayout()) {
-      touchShockwave.hidden = false;
-    } else {
-      touchShockwave.hidden = true;
-    }
+    touchShockwave.classList.toggle('touch-btn-shockwave--dim', !ready);
   } else {
-    touchShockwave.hidden = true;
     touchShockwave.classList.add('is-hidden');
+    touchShockwave.setAttribute('hidden', '');
     touchShockwave.disabled = true;
-    touchShockwave.classList.remove('is-ready');
+    touchShockwave.classList.remove('is-ready', 'touch-btn-shockwave--dim');
   }
 }
 
@@ -546,16 +555,30 @@ function resizeCanvas() {
       ? maxHFromCss
       : Math.round(maxW * CANVAS_ASPECT));
 
-  let cssWidth = Math.min(maxW, CANVAS_MAX_WIDTH);
-  let cssHeight = Math.round(cssWidth * CANVAS_ASPECT);
+  const mobile = isMobileViewport();
+  const landscape = isLandscapeLayout();
+  let cssWidth;
+  let cssHeight;
 
-  if (maxH > 0 && cssHeight > maxH) {
+  if (mobile && maxH > 0) {
     cssHeight = maxH;
     cssWidth = Math.round(cssHeight / CANVAS_ASPECT);
+    if (cssWidth > maxW) {
+      cssWidth = Math.min(maxW, CANVAS_MAX_WIDTH);
+      cssHeight = Math.round(cssWidth * CANVAS_ASPECT);
+    }
+  } else {
+    cssWidth = Math.min(maxW, CANVAS_MAX_WIDTH);
+    cssHeight = Math.round(cssWidth * CANVAS_ASPECT);
+    if (maxH > 0 && cssHeight > maxH) {
+      cssHeight = maxH;
+      cssWidth = Math.round(cssHeight / CANVAS_ASPECT);
+    }
   }
 
-  cssWidth = Math.max(240, cssWidth);
-  cssHeight = Math.max(139, cssHeight);
+  cssWidth = Math.max(landscape && mobile ? 280 : 240, cssWidth);
+  cssHeight = Math.max(landscape && mobile ? 162 : 139, cssHeight);
+  cssWidth = Math.min(cssWidth, CANVAS_MAX_WIDTH);
 
   if (gameStageViewport) {
     gameStageViewport.style.height = `${cssHeight}px`;
@@ -618,7 +641,9 @@ function syncGameplayChrome() {
   if (gamePlayStack) {
     gamePlayStack.classList.toggle('game-view-locked', inRun);
   }
-  syncGameViewport();
+  if (inRun || isMobileViewport()) {
+    syncGameViewport();
+  }
 }
 
 function bumpSession() {
