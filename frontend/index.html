@@ -59,7 +59,7 @@
           <button type="button" id="btn-logout" class="hud-logout">Log out</button>
         </div>
 
-        <details id="leaderboard-panel" class="leaderboard-panel panel" open>
+        <details id="leaderboard-panel" class="leaderboard-panel panel">
           <summary class="leaderboard-summary">Top Ascenders</summary>
           <div class="leaderboard-body">
             <ol id="leaderboard-list" class="leaderboard-list"></ol>
@@ -111,6 +111,9 @@
             <p>Layer 1: move left/right, jump. <strong>Layer 2+</strong>: fly in all four directions.</p>
             <p>Move: <kbd>←</kbd><kbd>→</kbd> or <kbd>A</kbd><kbd>D</kbd> · Jump/Up: <kbd>Space</kbd> · Layer 2+ Up/Down: <kbd>↑</kbd><kbd>↓</kbd> or <kbd>W</kbd><kbd>S</kbd></p>
             <p class="overlay-note">Each new run from Layer 1 uses 1 energy (VIP plays freely).</p>
+            <p id="start-energy-zero-hint" class="start-energy-zero-hint" hidden role="status">
+              No energy left. Wait for the refill timer above, or unlock VIP for unlimited plays.
+            </p>
             <p id="start-error" class="error-text start-error" hidden role="alert"></p>
             <button type="button" id="btn-start-game" class="btn btn-primary restart-btn" aria-label="Start meditation game">Start Meditation</button>
           </div>

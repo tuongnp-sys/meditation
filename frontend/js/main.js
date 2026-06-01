@@ -30,9 +30,9 @@ import {
  * - Production: set window.MEDITATION_API_URL in index.html, OR use Vercel /api proxy (same origin)
  */
 const API_BASE =
-  window.location.hostname === 'localhost' 
+  window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     ? 'http://localhost:3001'
-    : 'https://meditation-backend-6s1j.onrender.com';
+    : (window.MEDITATION_API_URL || window.location.origin);
 
 
 const POINTS_PER_CLEAR = 12;
@@ -92,8 +92,12 @@ const vipBadge = document.getElementById('vip-badge');
 const layerNameEl = document.getElementById('layer-name');
 const gameAnnouncements = document.getElementById('game-announcements');
 
+const leaderboardPanel = document.getElementById('leaderboard-panel');
+const canvasWrap = document.querySelector('.canvas-wrap');
+
 const overlayStart = document.getElementById('overlay-start');
 const startError = document.getElementById('start-error');
+const startEnergyZeroHint = document.getElementById('start-energy-zero-hint');
 const btnStartGame = document.getElementById('btn-start-game');
 const overlayEnergy = document.getElementById('overlay-energy');
 const energyCountdown = document.getElementById('energy-countdown');
@@ -267,8 +271,33 @@ function showGameControls(visible) {
   syncTouchControls(visible);
 }
 
+function isMobileViewport() {
+  return window.matchMedia('(max-width: 767px)').matches;
+}
+
 function shouldUseTouchControls() {
-  return window.matchMedia('(max-width: 767px)').matches || 'ontouchstart' in window;
+  return isMobileViewport() || 'ontouchstart' in window;
+}
+
+function syncLeaderboardPanelOpen() {
+  if (!leaderboardPanel) return;
+  if (isMobileViewport()) {
+    leaderboardPanel.removeAttribute('open');
+  } else {
+    leaderboardPanel.setAttribute('open', '');
+  }
+}
+
+function scrollToGameCanvas() {
+  const target = canvasWrap || canvas;
+  if (!target) return;
+  requestAnimationFrame(() => {
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+}
+
+function isOutOfEnergy() {
+  return Boolean(currentUser && !currentUser.isVip && currentUser.energy <= 0);
 }
 
 function clearTouchMovementKeys() {
@@ -762,10 +791,36 @@ function updateEnergyCountdownDisplay() {
 
 function syncStartButtonState() {
   if (!btnStartGame) return;
-  const outOfEnergy = Boolean(currentUser && !currentUser.isVip && currentUser.energy <= 0);
+  const outOfEnergy = isOutOfEnergy();
   btnStartGame.disabled = outOfEnergy;
   btnStartGame.classList.toggle('is-disabled', outOfEnergy);
   btnStartGame.setAttribute('aria-disabled', outOfEnergy ? 'true' : 'false');
+  if (startEnergyZeroHint) {
+    startEnergyZeroHint.hidden = !outOfEnergy;
+  }
+  if (outOfEnergy) {
+    btnStartGame.textContent = 'No Energy — Refill Pending';
+    btnStartGame.setAttribute(
+      'aria-label',
+      'Cannot start: no energy. Wait for refill or unlock VIP.'
+    );
+  } else {
+    btnStartGame.textContent = 'Start Meditation';
+    btnStartGame.setAttribute('aria-label', 'Start meditation game');
+  }
+}
+
+function showPostLoginMenuOverlay() {
+  if (isOutOfEnergy()) {
+    showOverlay(overlayEnergy);
+    hideOverlay(overlayStart);
+    announceGame(
+      'Out of energy. Your focus needs rest — check the refill timer, or unlock VIP for unlimited plays.'
+    );
+  } else {
+    showOverlay(overlayStart);
+    hideOverlay(overlayEnergy);
+  }
 }
 
 function startEnergyCountdown() {
@@ -974,7 +1029,7 @@ function handleLogout() {
   setGameState(GameState.IDLE);
 }
 
-function enterMenuAfterLogin() {
+async function enterMenuAfterLogin() {
   resetRunVariables();
   hideAllOverlays();
   hideEndOverlays();
@@ -982,10 +1037,12 @@ function enterMenuAfterLogin() {
   clearStartError();
   showEnergyStatusError(false);
   setGameState(GameState.START);
+  syncLeaderboardPanelOpen();
   updateDomHud();
-  showOverlay(overlayStart);
-  refreshEnergyUi();
+  await refreshEnergyUi();
+  showPostLoginMenuOverlay();
   refreshLeaderboard();
+  scrollToGameCanvas();
 }
 
 // --- Session flow ------------------------------------------------------------
@@ -1430,7 +1487,7 @@ loginForm.addEventListener('submit', async (e) => {
     player = new Player(canvas);
     world = new WorldManager(logicalWidth, logicalHeight);
     resizeCanvas();
-    enterMenuAfterLogin();
+    await enterMenuAfterLogin();
     console.log('[Meditation] Logged in:', currentUser.username);
   } catch (err) {
     showAuthError(err.message || 'Login failed. Is the backend running?');
@@ -1453,7 +1510,7 @@ document.getElementById('btn-energy-back')?.addEventListener('click', (e) => {
   stopEnergyCountdown();
   showEnergyStatusError(false);
   setGameState(GameState.START);
-  showOverlay(overlayStart);
+  showPostLoginMenuOverlay();
   refreshEnergyUi();
 });
 
@@ -1601,6 +1658,7 @@ function bindTouchControls() {
 }
 
 window.addEventListener('resize', scheduleResizeCanvas);
+window.addEventListener('resize', syncLeaderboardPanelOpen);
 
 window.addEventListener('keydown', (e) => {
   keys[e.code] = true;
@@ -1654,6 +1712,7 @@ canvas.addEventListener('touchend', (e) => {
 
 initAudio();
 initRememberUsername();
+syncLeaderboardPanelOpen();
 resizeCanvas();
 hideAllOverlays();
 hideEndOverlays();

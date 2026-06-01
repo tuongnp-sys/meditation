@@ -552,6 +552,7 @@ body {
   overflow: hidden;
   box-shadow: var(--shadow);
   border: 1px solid rgba(126, 184, 154, 0.2);
+  scroll-margin-top: 0.75rem;
 }
 
 #game-canvas {
@@ -575,6 +576,10 @@ body {
   text-align: center;
   background: rgba(15, 20, 25, 0.88);
   backdrop-filter: blur(8px);
+  box-sizing: border-box;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 /* JS toggles these — overrides default .overlay { display:flex } from older rules */
@@ -682,6 +687,46 @@ body {
   font-size: 0.8rem;
   color: var(--text-muted);
   font-style: italic;
+}
+
+.start-energy-zero-hint {
+  max-width: 340px;
+  margin: 0;
+  padding: 0.65rem 0.85rem;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--warning);
+  background: rgba(212, 184, 150, 0.12);
+  border: 1px solid rgba(212, 184, 150, 0.35);
+  border-radius: var(--radius);
+}
+
+.start-energy-zero-hint[hidden] {
+  display: none !important;
+}
+
+@media (max-width: 767px) {
+  .canvas-wrap {
+    overflow: visible;
+  }
+
+  #game-canvas {
+    border-radius: var(--radius);
+  }
+
+  .overlay.is-visible {
+    justify-content: flex-start;
+    padding: 1rem 1rem 1.25rem;
+  }
+
+  .overlay h2 {
+    font-size: 1.5rem;
+    margin-top: 0.25rem;
+  }
+
+  .overlay p {
+    font-size: 0.85rem;
+  }
 }
 
 @media (max-width: 600px) {
