@@ -17,6 +17,8 @@ const unavailableMusic = new Set();
 
 let currentMusicLayer = null;
 let musicFadeRaf = null;
+/** Bumped on stop — ignores stale play/fade callbacks. */
+let musicEpoch = 0;
 
 function createSfxElement(name) {
   const audio = new Audio(`${SFX_BASE_PATH}${name}.mp3`);
@@ -164,13 +166,16 @@ export function playLayerMusic(layerId, fadeIn = true) {
   const next = getOrCreateMusic(trackKey);
   if (!next) return;
 
+  const epoch = musicEpoch;
   const prevKey = currentMusicLayer;
   const prev = prevKey ? musicCache.get(prevKey) : null;
 
   if (prev && prev !== next) {
     fadeAudioVolume(prev, 0, 500, () => {
+      if (epoch !== musicEpoch) return;
       try {
         prev.pause();
+        prev.currentTime = 0;
       } catch { /* ignore */ }
     });
   }
@@ -180,6 +185,14 @@ export function playLayerMusic(layerId, fadeIn = true) {
 
   const p = next.play();
   const onPlaying = () => {
+    if (epoch !== musicEpoch) {
+      try {
+        next.pause();
+        next.currentTime = 0;
+        next.volume = 0;
+      } catch { /* ignore */ }
+      return;
+    }
     if (fadeIn) fadeAudioVolume(next, MUSIC_VOLUME, 900);
     else next.volume = MUSIC_VOLUME;
   };
@@ -206,6 +219,7 @@ export function resumeLayerMusic(layerId) {
 }
 
 export function stopLayerMusic() {
+  musicEpoch += 1;
   if (musicFadeRaf) {
     cancelAnimationFrame(musicFadeRaf);
     musicFadeRaf = null;
@@ -218,4 +232,15 @@ export function stopLayerMusic() {
     } catch { /* ignore */ }
   }
   currentMusicLayer = null;
+}
+
+/** Stop layer music and any playing SFX (logout, victory, end screens). */
+export function stopGameAudio() {
+  stopLayerMusic();
+  for (const audio of sfxCache.values()) {
+    try {
+      audio.pause();
+      audio.currentTime = 0;
+    } catch { /* ignore */ }
+  }
 }

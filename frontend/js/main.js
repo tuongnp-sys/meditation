@@ -21,7 +21,7 @@ import {
   playLayerMusic,
   pauseLayerMusic,
   resumeLayerMusic,
-  stopLayerMusic,
+  stopGameAudio,
 } from './audio.js';
 import { TouchJoystick } from './touch-joystick.js';
 
@@ -98,7 +98,17 @@ const layerNameEl = document.getElementById('layer-name');
 const gameAnnouncements = document.getElementById('game-announcements');
 
 const leaderboardPanel = document.getElementById('leaderboard-panel');
+const gamePlayStack = document.querySelector('.game-play-stack');
 const canvasWrap = document.querySelector('.canvas-wrap');
+const gameStatsBar = document.getElementById('game-stats-bar');
+const statLayer = document.getElementById('stat-layer');
+const statTime = document.getElementById('stat-time');
+const statScore = document.getElementById('stat-score');
+const statBest = document.getElementById('stat-best');
+const statHalo = document.getElementById('stat-halo');
+const statShield = document.getElementById('stat-shield');
+const statDowngrades = document.getElementById('stat-downgrades');
+const statHaloFill = document.getElementById('stat-halo-fill');
 
 const overlayStart = document.getElementById('overlay-start');
 const startError = document.getElementById('start-error');
@@ -524,6 +534,27 @@ function scheduleResizeCanvas() {
 
 function setGameState(next) {
   gameState = next;
+  syncGameplayChrome();
+}
+
+function syncGameplayChrome() {
+  const inRun = gameState === GameState.PLAYING;
+  document.body.classList.toggle('game-active', inRun);
+  if (gameSection) {
+    gameSection.classList.toggle('is-playing-session', inRun);
+  }
+  if (gameStatsBar) {
+    if (inRun) {
+      gameStatsBar.classList.remove('is-hidden');
+      gameStatsBar.setAttribute('aria-hidden', 'false');
+    } else {
+      gameStatsBar.classList.add('is-hidden');
+      gameStatsBar.setAttribute('aria-hidden', 'true');
+    }
+  }
+  if (gamePlayStack) {
+    gamePlayStack.classList.toggle('game-view-locked', inRun);
+  }
 }
 
 function bumpSession() {
@@ -606,102 +637,36 @@ function getDisplayBestScore() {
   return Math.max(saved, score);
 }
 
-// --- Canvas HUD --------------------------------------------------------------
+// --- Run stats (DOM above canvas) --------------------------------------------
 
-function roundRect(ctx, x, y, w, h, r) {
-  if (typeof ctx.roundRect === 'function') {
-    ctx.beginPath();
-    ctx.roundRect(x, y, w, h, r);
-    return;
-  }
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y);
-  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-  ctx.lineTo(x + w, y + h - r);
-  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-  ctx.lineTo(x + r, y + h);
-  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-  ctx.lineTo(x, y + r);
-  ctx.quadraticCurveTo(x, y, x + r, y);
-  ctx.closePath();
-}
+function updateRunStatsDom() {
+  if (!gameStatsBar || gameState !== GameState.PLAYING) return;
 
-function drawCanvasHud() {
   const best = getDisplayBestScore();
-  const panelW = 340;
-  const panelH = 78;
-
-  ctx.save();
-  ctx.fillStyle = 'rgba(12, 18, 24, 0.82)';
-  ctx.strokeStyle = 'rgba(126, 184, 154, 0.35)';
-  ctx.lineWidth = 1;
-  roundRect(ctx, 12, 12, panelW, panelH, 8);
-  ctx.fill();
-  ctx.stroke();
-
-  ctx.font = '600 13px Outfit, system-ui, sans-serif';
-  ctx.fillStyle = '#8a9ba8';
-  ctx.fillText('Layer', 24, 34);
-  ctx.fillText('Time', 24, 58);
-  ctx.fillText('Score', 180, 34);
-  ctx.fillText(`Halo: ${Math.round(haloEnergy)}%`, 180, 58);
-
-  if (protectiveCharges > 0) {
-    ctx.font = '600 12px Outfit, system-ui, sans-serif';
-    ctx.fillStyle = '#ffe566';
-    ctx.fillText(`Shield: ${protectiveCharges}/${PROTECTIVE_CHARGES_MAX}`, 260, 58);
-  }
-
   const timeLeft = Math.max(0, Math.ceil(layerDuration - layerElapsed));
-  ctx.font = '500 15px Outfit, system-ui, sans-serif';
-  ctx.fillStyle = '#e8eef2';
-  ctx.fillText(`${currentLayer} / ${MAX_LAYER}`, 72, 34);
-  ctx.fillText(`${timeLeft}s`, 72, 58);
-  ctx.fillText(String(score), 230, 34);
-  ctx.fillText(String(best), 230, 58);
+  const strikeColors = ['#8a9ba8', '#d4a574', '#c97b7b'];
+  const strikeIdx = Math.min(downgradeStrikes, 2);
 
-  const barX = 24;
-  const barY = 68;
-  const barW = panelW - 48;
-  const barH = 8;
-  ctx.fillStyle = 'rgba(255,255,255,0.12)';
-  roundRect(ctx, barX, barY, barW, barH, 4);
-  ctx.fill();
+  if (statLayer) statLayer.textContent = `${currentLayer} / ${MAX_LAYER}`;
+  if (statTime) statTime.textContent = `${timeLeft}s`;
+  if (statScore) statScore.textContent = String(score);
+  if (statBest) statBest.textContent = String(best);
+  if (statHalo) statHalo.textContent = `${Math.round(haloEnergy)}%`;
+  if (statHaloFill) statHaloFill.style.width = `${(haloEnergy / HALO_MAX) * 100}%`;
 
-  const fillW = barW * (haloEnergy / HALO_MAX);
-  if (fillW > 0) {
-    const grad = ctx.createLinearGradient(barX, 0, barX + barW, 0);
-    grad.addColorStop(0, '#d4b896');
-    grad.addColorStop(1, '#fff0a0');
-    ctx.fillStyle = grad;
-    roundRect(ctx, barX, barY, fillW, barH, 4);
-    ctx.fill();
+  if (statShield) {
+    if (protectiveCharges > 0) {
+      statShield.hidden = false;
+      statShield.textContent = `Shield ${protectiveCharges}/${PROTECTIVE_CHARGES_MAX}`;
+    } else {
+      statShield.hidden = true;
+    }
   }
 
-  ctx.restore();
-}
-
-function drawDowngradeStrikeHud() {
-  const panelW = 220;
-  const panelH = 28;
-  const panelX = 12;
-  const panelY = 98;
-  const strikeColors = ['#8a9ba8', '#d4a574', '#c97b7b'];
-  const strikeColor = strikeColors[Math.min(downgradeStrikes, 2)];
-
-  ctx.save();
-  ctx.fillStyle = 'rgba(12, 18, 24, 0.82)';
-  ctx.strokeStyle = 'rgba(201, 123, 123, 0.35)';
-  ctx.lineWidth = 1;
-  roundRect(ctx, panelX, panelY, panelW, panelH, 6);
-  ctx.fill();
-  ctx.stroke();
-
-  ctx.font = '600 13px Outfit, system-ui, sans-serif';
-  ctx.fillStyle = strikeColor;
-  ctx.fillText(`Downgrades: ${downgradeStrikes}/${MAX_DOWNGRADE_STRIKES}`, panelX + 12, panelY + 18);
-  ctx.restore();
+  if (statDowngrades) {
+    statDowngrades.textContent = `Downgrades ${downgradeStrikes}/${MAX_DOWNGRADE_STRIKES}`;
+    statDowngrades.style.color = strikeColors[strikeIdx];
+  }
 }
 
 function drawHitFlash() {
@@ -742,8 +707,7 @@ function paintFrame() {
   drawPlayerHaloAura();
   player.draw(ctx);
   floatingTexts.draw(ctx);
-  drawCanvasHud();
-  drawDowngradeStrikeHud();
+  updateRunStatsDom();
   drawHitFlash();
 }
 
@@ -1107,7 +1071,7 @@ function persistUsernamePreference(username) {
 function handleLogout() {
   bumpSession();
   stopGameLoop();
-  stopLayerMusic();
+  stopGameAudio();
   stopEnergyCountdown();
   hideAllOverlays();
   hideEndOverlays();
@@ -1184,7 +1148,7 @@ async function beginNewRun() {
 
   const token = bumpSession();
   stopGameLoop();
-  stopLayerMusic();
+  stopGameAudio();
   hideAllOverlays();
   hideEndOverlays();
   showGameControls(false);
@@ -1265,7 +1229,7 @@ function showSurrenderScreen() {
 function finishRun({ victory = false, surrender = false, reason = '' } = {}) {
   const token = sessionToken;
   stopGameLoop();
-  stopLayerMusic();
+  stopGameAudio();
   isPaused = false;
   showGameControls(false);
 
@@ -1612,7 +1576,7 @@ document.getElementById('btn-energy-back')?.addEventListener('click', (e) => {
   e.stopPropagation();
   bumpSession();
   stopGameLoop();
-  stopLayerMusic();
+  stopGameAudio();
   showGameControls(false);
   hideEndOverlays();
   stopEnergyCountdown();
@@ -1627,7 +1591,7 @@ document.getElementById('btn-surrender-back')?.addEventListener('click', (e) => 
   e.stopPropagation();
   bumpSession();
   stopGameLoop();
-  stopLayerMusic();
+  stopGameAudio();
   showGameControls(false);
   hideEndOverlays();
   setGameState(GameState.START);
@@ -1652,9 +1616,18 @@ const onStopClick = (e) => {
 
 btnPause?.addEventListener('click', onPauseClick);
 btnResume?.addEventListener('click', onResumeClick);
+btnStop?.addEventListener('click', onStopClick);
 btnPauseFloat?.addEventListener('click', onPauseClick);
 btnResumeFloat?.addEventListener('click', onResumeClick);
 btnStopFloat?.addEventListener('click', onStopClick);
+btnStopFloat?.addEventListener(
+  'touchstart',
+  (e) => {
+    e.preventDefault();
+    onStopClick(e);
+  },
+  { passive: false }
+);
 
 bindRestartButtons();
 bindTouchControls();
@@ -1745,9 +1718,21 @@ function bindTouchControls() {
 window.addEventListener('resize', scheduleResizeCanvas);
 window.addEventListener('resize', syncLeaderboardPanelOpen);
 
+const GAME_SCROLL_KEYS = new Set([
+  'ArrowUp',
+  'ArrowDown',
+  'ArrowLeft',
+  'ArrowRight',
+  'Space',
+]);
+
 window.addEventListener('keydown', (e) => {
   keys[e.code] = true;
   keys[e.key] = true;
+
+  if (isPlaying() && GAME_SCROLL_KEYS.has(e.code)) {
+    e.preventDefault();
+  }
 
   if (e.code === 'Space') {
     e.preventDefault();

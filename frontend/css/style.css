@@ -467,10 +467,111 @@ body {
   color: #f0c0c0;
 }
 
+body.game-active {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+.game-section.is-playing-session {
+  overscroll-behavior: contain;
+}
+
 .game-play-stack {
   width: 100%;
   max-width: 900px;
   margin-inline: auto;
+}
+
+.game-stats-bar {
+  margin-bottom: 0.5rem;
+  padding: 0.55rem 0.75rem 0.45rem;
+  background: var(--bg-panel);
+  border: 1px solid rgba(126, 184, 154, 0.25);
+  border-radius: var(--radius);
+}
+
+.game-stats-bar.is-hidden {
+  display: none !important;
+}
+
+.game-stats-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+}
+
+.game-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 3.5rem;
+}
+
+.game-stat-label {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+}
+
+.game-stat-value {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.game-stat-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+  background: rgba(22, 32, 42, 0.9);
+  border: 1px solid rgba(138, 155, 168, 0.35);
+  color: var(--text-muted);
+}
+
+.game-stat-downgrades {
+  margin-left: auto;
+}
+
+.game-stat-halo-bar {
+  margin-top: 0.4rem;
+  height: 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.game-stat-halo-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #d4b896, #fff0a0);
+  transition: width 0.15s ease;
+}
+
+.game-play-stack.game-view-locked {
+  position: relative;
+  scroll-margin-top: 0.5rem;
+}
+
+.game-play-stack.game-view-locked .canvas-wrap {
+  overflow: hidden;
+}
+
+@media (max-width: 767px) {
+  .game-section.is-playing-session .game-stats-bar {
+    padding: 0.4rem 0.55rem;
+  }
+
+  .game-stat-value {
+    font-size: 0.88rem;
+  }
+
+  .game-stat-downgrades {
+    margin-left: 0;
+  }
 }
 
 .touch-controls {

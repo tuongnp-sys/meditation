@@ -79,6 +79,36 @@
         <div id="game-announcements" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 
         <div class="game-play-stack">
+          <div id="game-stats-bar" class="game-stats-bar is-hidden" aria-hidden="true">
+            <div class="game-stats-row">
+              <div class="game-stat">
+                <span class="game-stat-label">Layer</span>
+                <span id="stat-layer" class="game-stat-value">1 / 7</span>
+              </div>
+              <div class="game-stat">
+                <span class="game-stat-label">Time</span>
+                <span id="stat-time" class="game-stat-value">0s</span>
+              </div>
+              <div class="game-stat">
+                <span class="game-stat-label">Score</span>
+                <span id="stat-score" class="game-stat-value">0</span>
+              </div>
+              <div class="game-stat">
+                <span class="game-stat-label">Best</span>
+                <span id="stat-best" class="game-stat-value">0</span>
+              </div>
+              <div class="game-stat">
+                <span class="game-stat-label">Halo</span>
+                <span id="stat-halo" class="game-stat-value">0%</span>
+              </div>
+              <span id="stat-shield" class="game-stat-badge" hidden>Shield</span>
+              <span id="stat-downgrades" class="game-stat-badge game-stat-downgrades">Downgrades 0/3</span>
+            </div>
+            <div class="game-stat-halo-bar" aria-hidden="true">
+              <div id="stat-halo-fill" class="game-stat-halo-fill"></div>
+            </div>
+          </div>
+
           <div class="canvas-wrap">
             <canvas
               id="game-canvas"
