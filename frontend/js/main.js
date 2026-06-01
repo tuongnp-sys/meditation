@@ -24,11 +24,15 @@ import {
   stopLayerMusic,
 } from './audio.js';
 
-/** Local dev uses :3001; production must set window.MEDITATION_API_URL before this module loads. */
+/**
+ * API base URL:
+ * - Local: backend on :3001
+ * - Production: set window.MEDITATION_API_URL in index.html, OR use Vercel /api proxy (same origin)
+ */
 const API_BASE =
   window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     ? 'http://localhost:3001'
-    : window.MEDITATION_API_URL || 'http://localhost:3001';
+    : window.MEDITATION_API_URL || window.location.origin;
 
 const POINTS_PER_CLEAR = 12;
 const HALO_SCRIPTURE_GAIN = 25;
@@ -648,18 +652,47 @@ function getEnergyRefillCountdownText() {
 
 // --- API ---------------------------------------------------------------------
 
+const API_RETRY_ATTEMPTS = 3;
+const API_RETRY_DELAY_MS = 2500;
+
+function isLocalApi() {
+  return (
+    window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+  );
+}
+
+function apiConnectionError() {
+  if (isLocalApi()) {
+    return 'Cannot connect to game server. Open a terminal, run: cd backend && npm start';
+  }
+  return 'Cannot reach the game server. The API may be waking up — wait a moment and try again.';
+}
+
+async function fetchWithRetry(url, options = {}) {
+  let lastError;
+  for (let attempt = 0; attempt < API_RETRY_ATTEMPTS; attempt++) {
+    try {
+      return await fetch(url, options);
+    } catch (err) {
+      lastError = err;
+      if (attempt < API_RETRY_ATTEMPTS - 1) {
+        await new Promise((r) => setTimeout(r, API_RETRY_DELAY_MS));
+      }
+    }
+  }
+  throw lastError;
+}
+
 async function apiPost(path, body) {
   let res;
   try {
-    res = await fetch(`${API_BASE}${path}`, {
+    res = await fetchWithRetry(`${API_BASE}${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
   } catch {
-    throw new Error(
-      'Cannot connect to game server. Open a terminal, run: cd backend && npm start'
-    );
+    throw new Error(apiConnectionError());
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
@@ -669,11 +702,9 @@ async function apiPost(path, body) {
 async function apiGet(path) {
   let res;
   try {
-    res = await fetch(`${API_BASE}${path}`);
+    res = await fetchWithRetry(`${API_BASE}${path}`);
   } catch {
-    throw new Error(
-      'Cannot connect to game server. Open a terminal, run: cd backend && npm start'
-    );
+    throw new Error(apiConnectionError());
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
