@@ -14,7 +14,7 @@ services:
         sync: false
       - key: ADMIN_SECRET
         generateValue: true
-    disk:
-      name: meditation-data
-      mountPath: /opt/render/project/src/backend/data
-      sizeGB: 1
+  #   disk:
+  #     name: meditation-data
+  #     mountPath: /opt/render/project/src/backend/data
+  #     sizeGB: 1
