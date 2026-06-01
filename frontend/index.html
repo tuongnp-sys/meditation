@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Meditation — 7 Layers of Ascent</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -109,22 +109,24 @@
             </div>
           </div>
 
-          <div class="canvas-wrap">
-            <canvas
-              id="game-canvas"
-              width="900"
-              height="520"
-              role="img"
-              aria-label="Meditation ascent game. Layer 1: move horizontally and jump. Layer 2 and above: fly in four directions. Collect golden scriptures for shield and halo; avoid non-yellow negative thoughts."
-            ></canvas>
+          <div id="game-stage" class="game-stage">
+            <div id="game-stage-viewport" class="game-stage-viewport">
+              <div class="canvas-wrap">
+                <canvas
+                  id="game-canvas"
+                  width="900"
+                  height="520"
+                  role="img"
+                  aria-label="Meditation ascent game. Layer 1: move horizontally and jump. Layer 2 and above: fly in four directions. Collect golden scriptures for shield and halo; avoid non-yellow negative thoughts."
+                ></canvas>
 
-            <div id="game-controls-float" class="game-controls-float is-hidden" aria-hidden="true">
-              <button type="button" id="btn-pause-float" class="btn-float" aria-label="Pause">⏸</button>
-              <button type="button" id="btn-resume-float" class="btn-float is-hidden" aria-label="Resume">▶</button>
-              <button type="button" id="btn-stop-float" class="btn-float btn-float-stop" aria-label="Stop run">■</button>
-            </div>
+                <div id="game-controls-float" class="game-controls-float is-hidden" aria-hidden="true">
+                  <button type="button" id="btn-pause-float" class="btn-float" aria-label="Pause">⏸</button>
+                  <button type="button" id="btn-resume-float" class="btn-float is-hidden" aria-label="Resume">▶</button>
+                  <button type="button" id="btn-stop-float" class="btn-float btn-float-stop" aria-label="Stop run">■</button>
+                </div>
 
-            <div id="overlay-start" class="overlay is-hidden" aria-hidden="true">
+                <div id="overlay-start" class="overlay is-hidden" aria-hidden="true">
               <h2>Center Your Focus</h2>
               <div class="overlay-mobile-only">
                 <p>Trái: di chuyển · Phải: <strong>Jump</strong> · Vàng = shield, tránh ý niệm xám.</p>
@@ -189,26 +191,28 @@
               <p id="victory-record-message" class="record-message is-hidden">New personal best saved!</p>
               <button type="button" id="meditateAgainBtn" class="btn btn-primary restart-btn" aria-label="Start a new meditation run after victory">Meditate Again</button>
             </div>
-          </div>
-
-          <div id="touch-controls" class="touch-controls is-hidden" aria-hidden="true">
-            <div class="touch-zone touch-zone-move">
-              <div id="touch-dpad" class="touch-dpad">
-                <button type="button" id="touch-left" class="touch-btn touch-btn-dir" aria-label="Move left">◀</button>
-                <button type="button" id="touch-right" class="touch-btn touch-btn-dir" aria-label="Move right">▶</button>
-              </div>
-              <div id="touch-joystick-mount" class="touch-joystick-mount is-hidden" aria-hidden="true">
-                <div class="joystick-base" aria-hidden="true">
-                  <div class="joystick-stick"></div>
-                </div>
-                <span class="joystick-label">Move</span>
               </div>
             </div>
-            <div class="touch-zone touch-zone-actions">
-              <button type="button" id="touch-shockwave" class="touch-btn touch-btn-shockwave is-hidden" aria-label="Shockwave pulse" hidden>
-                Pulse
-              </button>
-              <button type="button" id="touch-jump" class="touch-btn touch-btn-jump" aria-label="Jump or move up">Jump</button>
+
+            <div id="touch-controls" class="touch-controls is-hidden" aria-hidden="true">
+              <div class="touch-zone touch-zone-move">
+                <div id="touch-dpad" class="touch-dpad">
+                  <button type="button" id="touch-left" class="touch-btn touch-btn-dir" aria-label="Move left">◀</button>
+                  <button type="button" id="touch-right" class="touch-btn touch-btn-dir" aria-label="Move right">▶</button>
+                </div>
+                <div id="touch-joystick-mount" class="touch-joystick-mount is-hidden" aria-hidden="true">
+                  <div class="joystick-base" aria-hidden="true">
+                    <div class="joystick-stick"></div>
+                  </div>
+                  <span class="joystick-label">Move</span>
+                </div>
+              </div>
+              <div class="touch-zone touch-zone-actions">
+                <button type="button" id="touch-shockwave" class="touch-btn touch-btn-shockwave is-hidden" aria-label="Shockwave pulse" hidden>
+                  Pulse
+                </button>
+                <button type="button" id="touch-jump" class="touch-btn touch-btn-jump" aria-label="Jump or move up">Jump</button>
+              </div>
             </div>
           </div>
         </div>

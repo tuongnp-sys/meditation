@@ -99,6 +99,8 @@ const gameAnnouncements = document.getElementById('game-announcements');
 
 const leaderboardPanel = document.getElementById('leaderboard-panel');
 const gamePlayStack = document.querySelector('.game-play-stack');
+const gameStage = document.getElementById('game-stage');
+const gameStageViewport = document.getElementById('game-stage-viewport');
 const canvasWrap = document.querySelector('.canvas-wrap');
 const gameStatsBar = document.getElementById('game-stats-bar');
 const statLayer = document.getElementById('stat-layer');
@@ -328,11 +330,41 @@ function syncLeaderboardPanelOpen() {
   }
 }
 
+function isLandscapeLayout() {
+  return isMobileViewport() && window.matchMedia('(orientation: landscape)').matches;
+}
+
+/** Fit canvas to viewport — portrait taller, landscape contained, desktop scrollable. */
+function syncGameViewport() {
+  const vv = window.visualViewport;
+  const vh = Math.floor(vv?.height ?? window.innerHeight);
+  const mobile = isMobileViewport();
+  const landscape = isLandscapeLayout();
+
+  let maxH;
+  if (landscape) {
+    maxH = Math.max(180, vh - 72);
+  } else if (mobile) {
+    maxH = Math.max(300, Math.floor(vh * 0.52));
+  } else {
+    maxH = Math.min(560, Math.max(360, Math.floor(vh * 0.55)));
+  }
+
+  document.documentElement.style.setProperty('--game-stage-max-h', `${maxH}px`);
+
+  if (gamePlayStack) {
+    gamePlayStack.classList.toggle('game-layout-landscape', landscape);
+    gamePlayStack.classList.toggle('game-layout-portrait', mobile && !landscape);
+  }
+
+  scheduleResizeCanvas();
+}
+
 function scrollToGameCanvas() {
-  const target = canvasWrap || canvas;
+  const target = gameStage || gamePlayStack || canvasWrap;
   if (!target) return;
   requestAnimationFrame(() => {
-    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   });
 }
 
@@ -406,10 +438,14 @@ function syncShockwaveButton() {
     shouldUseTouchControls() && isMobileViewport() && isPlaying() && !isPaused;
   const ready = haloEnergy >= HALO_SHOCKWAVE_COST;
   if (showMobile) {
-    touchShockwave.hidden = false;
     touchShockwave.classList.remove('is-hidden');
     touchShockwave.disabled = !ready;
     touchShockwave.classList.toggle('is-ready', ready);
+    if (ready || isLandscapeLayout()) {
+      touchShockwave.hidden = false;
+    } else {
+      touchShockwave.hidden = true;
+    }
   } else {
     touchShockwave.hidden = true;
     touchShockwave.classList.add('is-hidden');
@@ -494,14 +530,41 @@ function setPaused(paused) {
 
 /** Fit canvas backing store to CSS size × DPR; game logic uses logicalWidth/Height. */
 function resizeCanvas() {
-  const wrap = canvas?.parentElement;
-  if (!wrap) return;
+  if (!canvas) return;
 
-  const measured = Math.floor(wrap.clientWidth);
-  const cssWidth = measured > 0
-    ? Math.min(measured, CANVAS_MAX_WIDTH)
-    : CANVAS_MAX_WIDTH;
-  const cssHeight = Math.round(cssWidth * CANVAS_ASPECT);
+  const container = gameStageViewport || canvas.parentElement;
+  if (!container) return;
+
+  const maxW = Math.floor(container.clientWidth) || CANVAS_MAX_WIDTH;
+  const maxHFromCss = parseInt(
+    getComputedStyle(document.documentElement).getPropertyValue('--game-stage-max-h'),
+    10
+  );
+  const maxH =
+    Math.floor(container.clientHeight) ||
+    (Number.isFinite(maxHFromCss) && maxHFromCss > 0
+      ? maxHFromCss
+      : Math.round(maxW * CANVAS_ASPECT));
+
+  let cssWidth = Math.min(maxW, CANVAS_MAX_WIDTH);
+  let cssHeight = Math.round(cssWidth * CANVAS_ASPECT);
+
+  if (maxH > 0 && cssHeight > maxH) {
+    cssHeight = maxH;
+    cssWidth = Math.round(cssHeight / CANVAS_ASPECT);
+  }
+
+  cssWidth = Math.max(240, cssWidth);
+  cssHeight = Math.max(139, cssHeight);
+
+  if (gameStageViewport) {
+    gameStageViewport.style.height = `${cssHeight}px`;
+  }
+  if (canvasWrap) {
+    canvasWrap.style.width = `${cssWidth}px`;
+    canvasWrap.style.height = `${cssHeight}px`;
+  }
+
   const dpr = window.devicePixelRatio || 1;
 
   logicalWidth = cssWidth;
@@ -555,6 +618,7 @@ function syncGameplayChrome() {
   if (gamePlayStack) {
     gamePlayStack.classList.toggle('game-view-locked', inRun);
   }
+  syncGameViewport();
 }
 
 function bumpSession() {
@@ -1717,6 +1781,12 @@ function bindTouchControls() {
 
 window.addEventListener('resize', scheduleResizeCanvas);
 window.addEventListener('resize', syncLeaderboardPanelOpen);
+window.addEventListener('resize', syncGameViewport);
+window.addEventListener('orientationchange', () => {
+  setTimeout(syncGameViewport, 100);
+});
+window.visualViewport?.addEventListener('resize', scheduleResizeCanvas);
+window.visualViewport?.addEventListener('resize', syncGameViewport);
 
 const GAME_SCROLL_KEYS = new Set([
   'ArrowUp',
@@ -1775,6 +1845,7 @@ canvas.addEventListener('click', (e) => {
 initAudio();
 initRememberUsername();
 syncLeaderboardPanelOpen();
+syncGameViewport();
 resizeCanvas();
 hideAllOverlays();
 hideEndOverlays();
