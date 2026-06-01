@@ -1,0 +1,20 @@
+# Render Blueprint — Web Service for Meditation API
+# Docs: https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: meditation-api
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: CORS_ORIGIN
+        sync: false
+      - key: ADMIN_SECRET
+        generateValue: true
+    disk:
+      name: meditation-data
+      mountPath: /opt/render/project/src/backend/data
+      sizeGB: 1

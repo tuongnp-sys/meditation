@@ -1,0 +1,58 @@
+{
+  "testplayer2": {
+    "username": "testplayer2",
+    "highScore": 0,
+    "energy": 4,
+    "isVip": false
+  },
+  "tuongnp": {
+    "username": "tuongnp",
+    "highScore": 12,
+    "energy": 0,
+    "isVip": false
+  },
+  "abc": {
+    "username": "abc",
+    "highScore": 0,
+    "energy": 0,
+    "isVip": false
+  },
+  "cleanup_test": {
+    "username": "cleanup_test",
+    "highScore": 0,
+    "energy": 4,
+    "isVip": false
+  },
+  "bcd": {
+    "username": "bcd",
+    "highScore": 0,
+    "energy": 0,
+    "isVip": false
+  },
+  "cde": {
+    "username": "cde",
+    "highScore": 72,
+    "energy": 0,
+    "isVip": false
+  },
+  "acd": {
+    "username": "acd",
+    "highScore": 784,
+    "energy": 0,
+    "isVip": false
+  },
+  "ab": {
+    "username": "ab",
+    "highScore": 648,
+    "energy": 0,
+    "isVip": false,
+    "lastEnergyRefillAt": "2026-06-01T08:49:42.260Z"
+  },
+  "abd": {
+    "username": "abd",
+    "highScore": 756,
+    "energy": 3,
+    "isVip": false,
+    "lastEnergyRefillAt": "2026-06-01T09:13:15.253Z"
+  }
+}

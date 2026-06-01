@@ -1,0 +1,24 @@
+# Dependencies
+backend/node_modules/
+node_modules/
+
+# Environment & secrets
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Optional: keep dev user data local (Render uses persistent disk in prod)
+# backend/data/users.json
