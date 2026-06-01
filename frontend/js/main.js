@@ -23,6 +23,7 @@ import {
   resumeLayerMusic,
   stopLayerMusic,
 } from './audio.js';
+import { TouchJoystick } from './touch-joystick.js';
 
 /**
  * API base URL:
@@ -41,6 +42,10 @@ const HALO_SHOCKWAVE_COST = 30;
 /** Mario-style: halo is lost only when touching a temptation, not over time. */
 const HALO_LOST_ON_TEMPTATION = 100;
 const HALO_MAX = 100;
+/** Mobile: obstacles move 10% slower for easier reaction time. */
+const MOBILE_OBSTACLE_SPEED_FACTOR = 0.9;
+/** Mobile: extra inset on player hurtbox (~10% more forgiving). */
+const MOBILE_HURTBOX_INSET = 3;
 const HIT_FLASH_DURATION = 0.15;
 const HIT_FLASH_MAX_ALPHA = 0.22;
 const FLOATING_TEXT_MAX = 12;
@@ -108,17 +113,24 @@ const overlayLayer = document.getElementById('overlay-layer');
 const victoryOverlay = document.getElementById('victoryOverlay');
 
 const gameControls = document.getElementById('game-controls');
+const gameControlsFloat = document.getElementById('game-controls-float');
 const btnPause = document.getElementById('btn-pause');
 const btnResume = document.getElementById('btn-resume');
 const btnStop = document.getElementById('btn-stop');
+const btnPauseFloat = document.getElementById('btn-pause-float');
+const btnResumeFloat = document.getElementById('btn-resume-float');
+const btnStopFloat = document.getElementById('btn-stop-float');
 
 const touchControls = document.getElementById('touch-controls');
+const touchDpad = document.getElementById('touch-dpad');
+const touchJoystickMount = document.getElementById('touch-joystick-mount');
 const touchLeft = document.getElementById('touch-left');
 const touchRight = document.getElementById('touch-right');
 const touchJump = document.getElementById('touch-jump');
-const touchUp = document.getElementById('touch-up');
-const touchDown = document.getElementById('touch-down');
-const touchRowVertical = document.getElementById('touch-row-vertical');
+const touchShockwave = document.getElementById('touch-shockwave');
+
+/** @type {TouchJoystick | null} */
+let mobileJoystick = null;
 
 const gameoverMessage = document.getElementById('gameover-message');
 const finalScoreEl = document.getElementById('final-score');
@@ -260,15 +272,33 @@ function hideEndOverlays() {
 }
 
 function showGameControls(visible) {
-  if (!gameControls) return;
-  if (visible) {
-    gameControls.classList.remove('is-hidden');
-    gameControls.setAttribute('aria-hidden', 'false');
-  } else {
-    gameControls.classList.add('is-hidden');
-    gameControls.setAttribute('aria-hidden', 'true');
+  if (gameControls) {
+    if (visible && !isMobileViewport()) {
+      gameControls.classList.remove('is-hidden');
+      gameControls.setAttribute('aria-hidden', 'false');
+    } else {
+      gameControls.classList.add('is-hidden');
+      gameControls.setAttribute('aria-hidden', 'true');
+    }
   }
+  syncMobilePlayChrome(visible);
   syncTouchControls(visible);
+}
+
+function syncMobilePlayChrome(playingVisible) {
+  if (!gameSection) return;
+  const mobilePlaying = playingVisible && isPlaying() && isMobileViewport();
+  gameSection.classList.toggle('is-playing-mobile', mobilePlaying);
+
+  if (gameControlsFloat) {
+    if (mobilePlaying) {
+      gameControlsFloat.classList.remove('is-hidden');
+      gameControlsFloat.setAttribute('aria-hidden', 'false');
+    } else {
+      gameControlsFloat.classList.add('is-hidden');
+      gameControlsFloat.setAttribute('aria-hidden', 'true');
+    }
+  }
 }
 
 function isMobileViewport() {
@@ -301,37 +331,101 @@ function isOutOfEnergy() {
 }
 
 function clearTouchMovementKeys() {
-  keys.ArrowLeft = false;
-  keys.KeyA = false;
-  keys.a = false;
-  keys.ArrowRight = false;
-  keys.KeyD = false;
-  keys.d = false;
-  keys.ArrowUp = false;
-  keys.KeyW = false;
-  keys.w = false;
-  keys.ArrowDown = false;
-  keys.KeyS = false;
-  keys.s = false;
+  setLeft(false);
+  setRight(false);
+  setUp(false);
+  setDown(false);
 }
 
 function syncTouchLayout() {
   const freeMove = currentLayer >= 2;
-  const touchRowDown = document.getElementById('touch-row-down');
-  if (touchRowVertical) {
-    touchRowVertical.hidden = !freeMove;
-    touchRowVertical.classList.toggle('is-hidden', !freeMove);
+  if (touchDpad) {
+    touchDpad.classList.toggle('is-hidden', freeMove);
+    touchDpad.hidden = freeMove;
   }
-  if (touchRowDown) {
-    touchRowDown.hidden = !freeMove;
-    touchRowDown.classList.toggle('is-hidden', !freeMove);
+  if (touchJoystickMount) {
+    touchJoystickMount.classList.toggle('is-hidden', !freeMove);
+    touchJoystickMount.hidden = !freeMove;
+    touchJoystickMount.setAttribute('aria-hidden', freeMove ? 'true' : 'false');
   }
   if (touchJump) {
-    touchJump.hidden = freeMove;
-    touchJump.classList.toggle('is-hidden', freeMove);
+    touchJump.textContent = freeMove ? 'Up' : 'Jump';
+    touchJump.setAttribute('aria-label', freeMove ? 'Move up' : 'Jump');
   }
-  if (touchUp) touchUp.hidden = !freeMove;
-  if (touchDown) touchDown.hidden = !freeMove;
+  if (!freeMove) {
+    mobileJoystick?.release();
+    applyJoystickToKeys(0, 0);
+  }
+}
+
+function applyJoystickToKeys(dx, dy) {
+  const threshold = 0.35;
+  setLeft(dx < -threshold);
+  setRight(dx > threshold);
+  setUp(dy < -threshold);
+  setDown(dy > threshold);
+}
+
+function setLeft(pressed) {
+  keys.ArrowLeft = pressed;
+  keys.KeyA = pressed;
+  keys.a = pressed;
+}
+
+function setRight(pressed) {
+  keys.ArrowRight = pressed;
+  keys.KeyD = pressed;
+  keys.d = pressed;
+}
+
+function setUp(pressed) {
+  keys.ArrowUp = pressed;
+  keys.KeyW = pressed;
+  keys.w = pressed;
+}
+
+function setDown(pressed) {
+  keys.ArrowDown = pressed;
+  keys.KeyS = pressed;
+  keys.s = pressed;
+}
+
+function syncShockwaveButton() {
+  if (!touchShockwave) return;
+  const showMobile =
+    shouldUseTouchControls() && isMobileViewport() && isPlaying() && !isPaused;
+  const ready = haloEnergy >= HALO_SHOCKWAVE_COST;
+  if (showMobile) {
+    touchShockwave.hidden = false;
+    touchShockwave.classList.remove('is-hidden');
+    touchShockwave.disabled = !ready;
+    touchShockwave.classList.toggle('is-ready', ready);
+  } else {
+    touchShockwave.hidden = true;
+    touchShockwave.classList.add('is-hidden');
+    touchShockwave.disabled = true;
+    touchShockwave.classList.remove('is-ready');
+  }
+}
+
+function getMobileObstacleSpeedFactor() {
+  return isMobileViewport() && shouldUseTouchControls()
+    ? MOBILE_OBSTACLE_SPEED_FACTOR
+    : 1;
+}
+
+/** Player collision bounds — smaller hurtbox on mobile for forgiveness. */
+function getPlayerCollisionBounds() {
+  if (!player) return null;
+  const b = player.getBounds();
+  if (!isMobileViewport() || !shouldUseTouchControls()) return b;
+  const inset = MOBILE_HURTBOX_INSET;
+  return {
+    x: b.x + inset,
+    y: b.y + inset,
+    w: Math.max(4, b.w - inset * 2),
+    h: Math.max(4, b.h - inset * 2),
+  };
 }
 
 function syncTouchControls(visible) {
@@ -343,26 +437,36 @@ function syncTouchControls(visible) {
     touchControls.classList.add('is-visible');
     touchControls.setAttribute('aria-hidden', 'false');
     syncTouchLayout();
+    syncShockwaveButton();
   } else {
     touchControls.classList.add('is-hidden');
     touchControls.classList.remove('is-visible');
     touchControls.setAttribute('aria-hidden', 'true');
+    mobileJoystick?.release();
     clearTouchMovementKeys();
+    syncShockwaveButton();
   }
 }
 
 function syncPauseButtons() {
-  if (!btnPause || !btnResume) return;
-  if (isPaused) {
-    btnPause.classList.add('is-hidden');
-    btnPause.hidden = true;
-    btnResume.classList.remove('is-hidden');
-    btnResume.hidden = false;
-  } else {
-    btnPause.classList.remove('is-hidden');
-    btnPause.hidden = false;
-    btnResume.classList.add('is-hidden');
-    btnResume.hidden = true;
+  const paused = isPaused;
+  const pairs = [
+    [btnPause, btnResume],
+    [btnPauseFloat, btnResumeFloat],
+  ];
+  for (const [pauseBtn, resumeBtn] of pairs) {
+    if (!pauseBtn || !resumeBtn) continue;
+    if (paused) {
+      pauseBtn.classList.add('is-hidden');
+      pauseBtn.hidden = true;
+      resumeBtn.classList.remove('is-hidden');
+      resumeBtn.hidden = false;
+    } else {
+      pauseBtn.classList.remove('is-hidden');
+      pauseBtn.hidden = false;
+      resumeBtn.classList.add('is-hidden');
+      resumeBtn.hidden = true;
+    }
   }
 }
 
@@ -370,6 +474,7 @@ function setPaused(paused) {
   if (!isPlaying()) return;
   isPaused = paused;
   syncPauseButtons();
+  syncShockwaveButton();
   if (isPaused) pauseLayerMusic();
   else {
     lastTime = performance.now();
@@ -1422,11 +1527,13 @@ function gameLoop(timestamp) {
     spawnPaused: inLayerTransition,
     layerElapsed,
     layerDuration,
+    speedFactor: getMobileObstacleSpeedFactor(),
   });
   floatingTexts.update(dt);
 
   if (!inLayerTransition) {
-    const scripturePickups = world.collectScriptures(player.getBounds());
+    const playerBounds = getPlayerCollisionBounds();
+    const scripturePickups = world.collectScriptures(playerBounds);
     if (scripturePickups.length > 0) {
       addHalo(scripturePickups.length * HALO_SCRIPTURE_GAIN);
       refreshLayerDuration();
@@ -1442,7 +1549,7 @@ function gameLoop(timestamp) {
 
     for (const t of world.temptations) {
       if (t.cleared) continue;
-      if (player.invincible <= 0 && rectsOverlap(player.getBounds(), t.getBounds())) {
+      if (player.invincible <= 0 && rectsOverlap(playerBounds, t.getBounds())) {
         handleTemptationCollision();
         if (!isPlaying()) return;
         break;
@@ -1450,6 +1557,7 @@ function gameLoop(timestamp) {
     }
   }
 
+  syncShockwaveButton();
   paintFrame();
 }
 
@@ -1526,48 +1634,40 @@ document.getElementById('btn-surrender-back')?.addEventListener('click', (e) => 
   showOverlay(overlayStart);
 });
 
-btnPause?.addEventListener('click', (e) => {
+const onPauseClick = (e) => {
   e.preventDefault();
   e.stopPropagation();
   if (isPlaying() && !isPaused) setPaused(true);
-});
-
-btnResume?.addEventListener('click', (e) => {
+};
+const onResumeClick = (e) => {
   e.preventDefault();
   e.stopPropagation();
   if (isPlaying() && isPaused) setPaused(false);
-});
-
-btnStop?.addEventListener('click', (e) => {
+};
+const onStopClick = (e) => {
   e.preventDefault();
   e.stopPropagation();
   handleStopMeditation();
-});
+};
+
+btnPause?.addEventListener('click', onPauseClick);
+btnResume?.addEventListener('click', onResumeClick);
+btnPauseFloat?.addEventListener('click', onPauseClick);
+btnResumeFloat?.addEventListener('click', onResumeClick);
+btnStopFloat?.addEventListener('click', onStopClick);
 
 bindRestartButtons();
 bindTouchControls();
 
 function bindTouchControls() {
-  const setLeft = (pressed) => {
-    keys.ArrowLeft = pressed;
-    keys.KeyA = pressed;
-    keys.a = pressed;
-  };
-  const setRight = (pressed) => {
-    keys.ArrowRight = pressed;
-    keys.KeyD = pressed;
-    keys.d = pressed;
-  };
-  const setUp = (pressed) => {
-    keys.ArrowUp = pressed;
-    keys.KeyW = pressed;
-    keys.w = pressed;
-  };
-  const setDown = (pressed) => {
-    keys.ArrowDown = pressed;
-    keys.KeyS = pressed;
-    keys.s = pressed;
-  };
+  if (touchJoystickMount) {
+    mobileJoystick = new TouchJoystick(touchJoystickMount, {
+      onChange: (dx, dy) => {
+        if (!isPlaying() || isPaused || currentLayer < 2) return;
+        applyJoystickToKeys(dx, dy);
+      },
+    });
+  }
 
   const bindHold = (el, onPress, onRelease) => {
     if (!el) return;
@@ -1576,11 +1676,13 @@ function bindTouchControls() {
       e.preventDefault();
       e.stopPropagation();
       if (!isPlaying() || isPaused) return;
+      el.classList.add('is-pressed');
       onPress();
     };
     const release = (e) => {
       e.preventDefault();
       e.stopPropagation();
+      el.classList.remove('is-pressed');
       onRelease();
     };
 
@@ -1594,67 +1696,50 @@ function bindTouchControls() {
 
   bindHold(touchLeft, () => setLeft(true), () => setLeft(false));
   bindHold(touchRight, () => setRight(true), () => setRight(false));
-  bindHold(touchUp, () => setUp(true), () => setUp(false));
-  bindHold(touchDown, () => setDown(true), () => setDown(false));
 
-  const onJumpOrUp = () => {
+  const onJumpPress = () => {
     if (!isPlaying() || isPaused) return;
     if (currentLayer >= 2) setUp(true);
     else player?.jump();
   };
-  const onJumpOrUpRelease = () => {
+  const onJumpRelease = () => {
     if (currentLayer >= 2) setUp(false);
   };
 
-  touchJump?.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    suppressCanvasClickUntil = Date.now() + 400;
-    onJumpOrUp();
-  }, { passive: false });
+  const bindActionTap = (el, onPress, onRelease = () => {}) => {
+    if (!el) return;
+    const press = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!isPlaying() || isPaused) return;
+      el.classList.add('is-pressed');
+      onPress();
+    };
+    const release = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      el.classList.remove('is-pressed');
+      onRelease();
+    };
+    el.addEventListener('touchstart', press, { passive: false });
+    el.addEventListener('touchend', release, { passive: false });
+    el.addEventListener('touchcancel', release, { passive: false });
+    el.addEventListener('mousedown', press);
+    el.addEventListener('mouseup', release);
+  };
 
-  touchJump?.addEventListener('touchend', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    onJumpOrUpRelease();
-  }, { passive: false });
+  bindActionTap(touchJump, onJumpPress, onJumpRelease);
 
-  touchJump?.addEventListener('mousedown', (e) => {
+  touchShockwave?.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    onJumpOrUp();
+    tryTriggerShockwave();
   });
-
-  touchJump?.addEventListener('mouseup', (e) => {
+  touchShockwave?.addEventListener('touchstart', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    onJumpOrUpRelease();
-  });
-
-  touchUp?.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    suppressCanvasClickUntil = Date.now() + 400;
-    if (isPlaying() && !isPaused) setUp(true);
+    tryTriggerShockwave();
   }, { passive: false });
-
-  touchUp?.addEventListener('touchend', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setUp(false);
-  }, { passive: false });
-
-  touchUp?.addEventListener('mousedown', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (isPlaying() && !isPaused) setUp(true);
-  });
-
-  touchUp?.addEventListener('mouseup', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setUp(false);
-  });
 }
 
 window.addEventListener('resize', scheduleResizeCanvas);
@@ -1695,18 +1780,10 @@ window.addEventListener('keyup', (e) => {
 
 canvas.addEventListener('click', (e) => {
   if (Date.now() < suppressCanvasClickUntil) return;
+  if (isMobileViewport() && shouldUseTouchControls()) return;
   e.preventDefault();
   if (isPlaying() && !isPaused) tryTriggerShockwave();
 });
-
-canvas.addEventListener('touchend', (e) => {
-  if (!isPlaying() || isPaused) return;
-  if (e.target !== canvas) return;
-  if (e.changedTouches.length !== 1) return;
-  e.preventDefault();
-  suppressCanvasClickUntil = Date.now() + 400;
-  tryTriggerShockwave();
-}, { passive: false });
 
 // --- Boot --------------------------------------------------------------------
 

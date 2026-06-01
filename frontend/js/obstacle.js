@@ -459,11 +459,12 @@ export class WorldManager {
       spawnPaused = false,
       layerElapsed = 0,
       layerDuration = 90,
+      speedFactor = 1,
     } = options;
 
     const layerConfig = getLayerConfig(layer);
     const spawnIntervalFactor = getSpawnIntervalFactor(layerElapsed, layerDuration);
-    const speedMultiplier = getSpeedMultiplier(layerElapsed, layerDuration);
+    const speedMultiplier = getSpeedMultiplier(layerElapsed, layerDuration) * speedFactor;
     const w = this.canvasWidth;
     const h = this.canvasHeight;
 
