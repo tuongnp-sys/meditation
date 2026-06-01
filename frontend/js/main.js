@@ -30,9 +30,10 @@ import {
  * - Production: set window.MEDITATION_API_URL in index.html, OR use Vercel /api proxy (same origin)
  */
 const API_BASE =
-  window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+  window.location.hostname === 'localhost' 
     ? 'http://localhost:3001'
-    : window.MEDITATION_API_URL || window.location.origin;
+    : 'https://meditation-backend-6s1j.onrender.com';
+
 
 const POINTS_PER_CLEAR = 12;
 const HALO_SCRIPTURE_GAIN = 25;
