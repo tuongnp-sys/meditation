@@ -455,7 +455,7 @@ function syncGameViewport() {
     const overlayChrome = compact && isMobileOverlayViewport();
     const { statsH, sessionH, touchH, headerH } = measurePlayChrome(compact);
     const chromePad = compact ? 8 : 16;
-    const overlayReserved = landscape ? 132 : 186;
+    const overlayReserved = landscape ? 104 : 186;
     const chromeTotal = overlayChrome
       ? overlayReserved
       : statsH + sessionH + touchH + headerH + chromePad;

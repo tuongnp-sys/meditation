@@ -27,7 +27,8 @@
     "username": "bcd",
     "highScore": 0,
     "energy": 0,
-    "isVip": false
+    "isVip": false,
+    "lastEnergyRefillAt": "2026-06-02T07:29:46.607Z"
   },
   "cde": {
     "username": "cde",
@@ -51,8 +52,36 @@
   "abd": {
     "username": "abd",
     "highScore": 756,
-    "energy": 2,
+    "energy": 0,
     "isVip": false,
     "lastEnergyRefillAt": "2026-06-01T09:13:15.253Z"
+  },
+  "abcd": {
+    "username": "abcd",
+    "highScore": 3621,
+    "energy": 0,
+    "isVip": false,
+    "lastEnergyRefillAt": "2026-06-02T03:30:55.856Z"
+  },
+  "bc": {
+    "username": "bc",
+    "highScore": 2086,
+    "energy": 0,
+    "isVip": false,
+    "lastEnergyRefillAt": "2026-06-02T06:52:14.250Z"
+  },
+  "cda": {
+    "username": "cda",
+    "highScore": 425,
+    "energy": 3,
+    "isVip": false,
+    "lastEnergyRefillAt": "2026-06-02T07:30:03.123Z"
+  },
+  "cdc": {
+    "username": "cdc",
+    "highScore": 132,
+    "energy": 3,
+    "isVip": false,
+    "lastEnergyRefillAt": "2026-06-02T08:19:14.333Z"
   }
 }

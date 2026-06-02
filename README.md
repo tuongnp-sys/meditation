@@ -38,7 +38,20 @@ Each user document contains:
 
 ## 4. Game Progression & Layer Mechanics (7 Layers of Focus)
 
-Player starts as a human on Layer 1 and clears obstacles to score points. Reaching score thresholds triggers transition to the next layer.
+Player starts as a human on Layer 1 and earns **focus score** from mindful play. Each layer has a **score target** (`LAYER_SCORE_TARGETS` in `frontend/js/background.js`). When `layerScore` reaches the target, the player ascends immediately.
+
+**Hybrid time cap:** If the target is not met, ascent still happens when the soft timer expires (`getLayerTimeCap`, 90–120s depending on halo). Higher halo shortens the cap slightly (mindfulness reward).
+
+**Score sources (per run):**
+
+| Action | Points |
+|--------|--------|
+| Scripture pickup | +20 (×2 multiplier when Flow combo ≥ 5 scriptures) |
+| Shockwave clear | +10 each (capped per wave) |
+| Survival (no hit) | +2 every 3s |
+| Layer ascend | +40 base + up to +60 bonus (time left + halo) |
+
+**HUD:** Ascend progress (`layerScore / target`), Flow combo, layer progress bar, halo bar.
 
 - **Layer 1: Earth Ground** (Obstacles: Buildings/Trees)
 
@@ -128,7 +141,7 @@ Save the player's score if it beats their high score.
 
 
 
-**Request body:** `{ "username": "string", "score": number }`
+**Request body:** `{ "username": "string", "score": number, "maxLayer": number (optional, 1–7) }`
 
 
 
@@ -146,7 +159,7 @@ Return top players ranked by `highScore` (public fields only — no energy).
 
 
 
-**Response:** `{ "entries": [{ "username": string, "highScore": number }, ...] }`
+**Response:** `{ "entries": [{ "username": string, "highScore": number, "maxLayer": number }, ...] }`
 
 
 
@@ -299,8 +312,8 @@ Test on real devices before release (portrait and landscape):
 | Login + start game | ✓ | ✓ |
 | Stats bar + gold Halo bar visible | ✓ | ✓ |
 | Session Energy row + meter + Pause/Stop | ✓ | ✓ |
-| Layer 1: D-pad + Jump + Pulse (Halo ≥30%) | ✓ | ✓ |
-| Layer 2+: Joystick + Up/Down + Pulse | ✓ | ✓ |
+| Layer 1: hold ◀/▶ — smooth run (no stutter) + Jump + Pulse | ✓ | ✓ |
+| Layer 2+: 4-way arrow pad + Pulse; hold diagonals for smooth fly | ✓ | ✓ |
 | Rotate mid-run: layout recovers &lt;500ms | — | ✓ |
 | Stop / logout: music stops, no ghost audio | ✓ | ✓ |
 | Out of energy overlay + countdown | ✓ | ✓ |

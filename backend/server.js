@@ -48,7 +48,7 @@ function createCorsOptions() {
 app.use(cors(createCorsOptions()));
 app.use(express.json());
 
-/** @type {Record<string, { username: string, highScore: number, energy: number, isVip: boolean, lastEnergyRefillAt: string }>} */
+/** @type {Record<string, { username: string, highScore: number, maxLayer: number, energy: number, isVip: boolean, lastEnergyRefillAt: string }>} */
 let userDatabase = {};
 
 const DEFAULT_ENERGY = 5;
@@ -63,6 +63,11 @@ function ensureUserFields(user) {
 
   if (!user.lastEnergyRefillAt || typeof user.lastEnergyRefillAt !== 'string') {
     user.lastEnergyRefillAt = nowIso();
+    changed = true;
+  }
+
+  if (!Number.isFinite(user.maxLayer) || user.maxLayer < 0) {
+    user.maxLayer = 0;
     changed = true;
   }
 
@@ -155,6 +160,7 @@ function getOrCreateUser(username) {
     userDatabase[id] = {
       username: id,
       highScore: 0,
+      maxLayer: 0,
       energy: DEFAULT_ENERGY,
       isVip: false,
       lastEnergyRefillAt: nowIso(),
@@ -168,6 +174,7 @@ function publicProfile(user) {
   return {
     username: user.username,
     highScore: user.highScore,
+    maxLayer: user.maxLayer ?? 0,
     energy: user.energy,
     isVip: user.isVip,
   };
@@ -267,7 +274,7 @@ app.get('/api/energy-status', (req, res) => {
 });
 
 app.post('/api/save-score', (req, res) => {
-  const { username, score } = req.body || {};
+  const { username, score, maxLayer } = req.body || {};
 
   if (!username || typeof username !== 'string' || !username.trim()) {
     return res.status(400).json({ error: 'Username is required.' });
@@ -278,19 +285,33 @@ app.post('/api/save-score', (req, res) => {
     return res.status(400).json({ error: 'Valid score is required.' });
   }
 
+  const parsedMaxLayer = Number(maxLayer);
+  const hasMaxLayer =
+    Number.isFinite(parsedMaxLayer) && parsedMaxLayer >= 1 && parsedMaxLayer <= 7;
+
   const user = userDatabase[username.trim()];
   if (!user) {
     return res.status(404).json({ error: 'User not found. Please log in first.' });
   }
 
+  ensureUserFields(user);
+
   const isNewRecord = parsedScore > user.highScore;
+  const isNewMaxLayer = hasMaxLayer && parsedMaxLayer > (user.maxLayer ?? 0);
+  let saved = false;
+
   if (isNewRecord) {
     user.highScore = Math.floor(parsedScore);
-    saveUsersToDisk();
+    saved = true;
   }
+  if (isNewMaxLayer) {
+    user.maxLayer = Math.floor(parsedMaxLayer);
+    saved = true;
+  }
+  if (saved) saveUsersToDisk();
 
   console.log(
-    `[save-score] ${user.username} — score: ${parsedScore}, highScore: ${user.highScore}${isNewRecord ? ' (new record)' : ''}`
+    `[save-score] ${user.username} — score: ${parsedScore}, highScore: ${user.highScore}, maxLayer: ${user.maxLayer ?? 0}${isNewRecord ? ' (new score)' : ''}${isNewMaxLayer ? ' (new layer)' : ''}`
   );
 
   res.json({
@@ -332,6 +353,7 @@ app.get('/api/leaderboard', (req, res) => {
     .map((user) => ({
       username: user.username,
       highScore: user.highScore,
+      maxLayer: user.maxLayer ?? 0,
     }))
     .sort((a, b) => b.highScore - a.highScore)
     .slice(0, limit);
