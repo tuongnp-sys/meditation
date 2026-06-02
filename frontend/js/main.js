@@ -46,6 +46,10 @@ const HALO_MAX = 100;
 const MOBILE_OBSTACLE_SPEED_FACTOR = 0.9;
 /** Mobile: extra inset on player hurtbox (~10% more forgiving). */
 const MOBILE_HURTBOX_INSET = 3;
+/** Matches portrait phones and landscape phones (wide but short viewport). */
+const MOBILE_VIEWPORT_MQ =
+  '(max-width: 767px), (max-height: 520px) and (max-width: 1100px) and (pointer: coarse)';
+const DEFAULT_ENERGY_MAX = 5;
 const HIT_FLASH_DURATION = 0.15;
 const HIT_FLASH_MAX_ALPHA = 0.22;
 const FLOATING_TEXT_MAX = 12;
@@ -127,13 +131,16 @@ const overlayLayer = document.getElementById('overlay-layer');
 const victoryOverlay = document.getElementById('victoryOverlay');
 
 const gameControls = document.getElementById('game-controls');
-const gameControlsFloat = document.getElementById('game-controls-float');
+const gameSessionBar = document.getElementById('game-session-bar');
+const sessionHudEnergy = document.getElementById('session-hud-energy');
+const sessionHudEnergyCountdown = document.getElementById('session-hud-energy-countdown');
+const sessionEnergyFill = document.getElementById('session-energy-fill');
+const btnPauseMobile = document.getElementById('btn-pause-mobile');
+const btnResumeMobile = document.getElementById('btn-resume-mobile');
+const btnStopMobile = document.getElementById('btn-stop-mobile');
 const btnPause = document.getElementById('btn-pause');
 const btnResume = document.getElementById('btn-resume');
 const btnStop = document.getElementById('btn-stop');
-const btnPauseFloat = document.getElementById('btn-pause-float');
-const btnResumeFloat = document.getElementById('btn-resume-float');
-const btnStopFloat = document.getElementById('btn-stop-float');
 
 const touchControls = document.getElementById('touch-controls');
 const touchDpad = document.getElementById('touch-dpad');
@@ -141,6 +148,7 @@ const touchJoystickMount = document.getElementById('touch-joystick-mount');
 const touchLeft = document.getElementById('touch-left');
 const touchRight = document.getElementById('touch-right');
 const touchJump = document.getElementById('touch-jump');
+const touchDown = document.getElementById('touch-down');
 const touchShockwave = document.getElementById('touch-shockwave');
 
 /** @type {TouchJoystick | null} */
@@ -196,6 +204,8 @@ let pendingLayerUp = false;
 let enlightenmentPulse = 0;
 let hitFlashTimer = 0;
 let suppressCanvasClickUntil = 0;
+let lastShockwaveTouchMs = 0;
+let viewportSyncTimer = null;
 let energyCountdownTimer = null;
 /** @type {{ energy: number, isVip: boolean, nextRefillAt: string | null, msUntilRefill: number } | null} */
 let energyStatus = null;
@@ -285,6 +295,10 @@ function hideEndOverlays() {
   for (const el of END_OVERLAYS) hideOverlay(el);
 }
 
+function markTouchUiActive() {
+  suppressCanvasClickUntil = Date.now() + 400;
+}
+
 function showGameControls(visible) {
   if (gameControls) {
     if (visible && !isMobileViewport()) {
@@ -297,30 +311,38 @@ function showGameControls(visible) {
   }
   syncMobilePlayChrome(visible);
   syncTouchControls(visible);
-  if (visible && isMobileViewport()) {
-    requestAnimationFrame(syncGameViewport);
+  if (visible && isCompactPlayMode()) {
+    remeasurePlayChromeAfterLayout();
   }
+}
+
+/** Phone/tablet compact UI while a run is active. */
+function isCompactPlayMode() {
+  return isPlaying() && isMobileViewport();
 }
 
 function syncMobilePlayChrome(playingVisible) {
   if (!gameSection) return;
-  const mobilePlaying = playingVisible && isPlaying() && isMobileViewport();
-  gameSection.classList.toggle('is-playing-mobile', mobilePlaying);
-  document.body.classList.toggle('game-mobile-play', mobilePlaying);
+  const compact = playingVisible && isCompactPlayMode();
+  gameSection.classList.toggle('is-playing-mobile', compact);
+  document.body.classList.toggle('game-mobile-play', compact);
 
-  if (gameControlsFloat) {
-    if (mobilePlaying) {
-      gameControlsFloat.classList.remove('is-hidden');
-      gameControlsFloat.setAttribute('aria-hidden', 'false');
+  if (gameSessionBar) {
+    if (compact) {
+      gameSessionBar.classList.remove('is-hidden');
+      gameSessionBar.setAttribute('aria-hidden', 'false');
+      syncSessionHudEnergy();
+      updateEnergyCountdownDisplay();
+      remeasurePlayChromeAfterLayout();
     } else {
-      gameControlsFloat.classList.add('is-hidden');
-      gameControlsFloat.setAttribute('aria-hidden', 'true');
+      gameSessionBar.classList.add('is-hidden');
+      gameSessionBar.setAttribute('aria-hidden', 'true');
     }
   }
 }
 
 function isMobileViewport() {
-  return window.matchMedia('(max-width: 767px)').matches;
+  return window.matchMedia(MOBILE_VIEWPORT_MQ).matches;
 }
 
 function shouldUseTouchControls() {
@@ -340,36 +362,71 @@ function isLandscapeLayout() {
   return isMobileViewport() && window.matchMedia('(orientation: landscape)').matches;
 }
 
+function measurePlayChrome(compact) {
+  if (!compact) {
+    return { statsH: 0, sessionH: 0, touchH: 0, headerH: 0 };
+  }
+
+  let statsH = 0;
+  let sessionH = 0;
+  let touchH = 0;
+
+  if (gameStatsBar && !gameStatsBar.classList.contains('is-hidden')) {
+    statsH = gameStatsBar.offsetHeight || 0;
+  }
+  if (gameSessionBar && !gameSessionBar.classList.contains('is-hidden')) {
+    sessionH = gameSessionBar.offsetHeight || 0;
+  }
+  if (touchControls?.classList.contains('is-visible')) {
+    touchH = touchControls.offsetHeight || 0;
+  } else if (touchControls) {
+    const minH = parseFloat(getComputedStyle(touchControls).minHeight);
+    touchH = Number.isFinite(minH) && minH > 0 ? minH : 48;
+  }
+
+  return { statsH, sessionH, touchH, headerH: 4 };
+}
+
+function remeasurePlayChromeAfterLayout() {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(syncGameViewport);
+  });
+}
+
+function scheduleSyncGameViewport() {
+  if (viewportSyncTimer) clearTimeout(viewportSyncTimer);
+  viewportSyncTimer = setTimeout(() => {
+    viewportSyncTimer = null;
+    syncGameViewport();
+  }, 50);
+}
+
 /** Fit canvas to viewport — portrait taller, landscape column layout, desktop scrollable. */
 function syncGameViewport() {
   const vv = window.visualViewport;
   const vh = Math.floor(vv?.height ?? window.innerHeight);
+  const vw = Math.floor(vv?.width ?? window.innerWidth);
   const mobile = isMobileViewport();
   const landscape = isLandscapeLayout();
-  const mobilePlaying = mobile && isPlaying();
-
-  const statsH =
-    mobilePlaying && gameStatsBar && !gameStatsBar.classList.contains('is-hidden')
-      ? gameStatsBar.offsetHeight
-      : mobile
-        ? 36
-        : 52;
-  const controlsReserve = mobilePlaying ? (landscape ? 58 : 68) : 0;
-  const chromePad = mobilePlaying ? 6 : 24;
+  const compact = isCompactPlayMode();
 
   let maxH;
   let maxW = CANVAS_MAX_WIDTH;
-  if (landscape && mobile) {
-    maxH = Math.max(200, vh - statsH - controlsReserve - chromePad);
-    maxW = Math.min(CANVAS_MAX_WIDTH, Math.floor(window.innerWidth - 16));
-  } else if (mobile) {
-    const headerReserve = mobilePlaying ? 4 : 88;
-    maxH = vh - statsH - controlsReserve - headerReserve - chromePad;
-    maxH = Math.max(380, maxH);
-    maxH = Math.max(maxH, Math.floor(vh * 0.74));
-    maxW = Math.min(CANVAS_MAX_WIDTH, Math.floor(window.innerWidth - 12));
+
+  if (mobile) {
+    const { statsH, sessionH, touchH, headerH } = measurePlayChrome(compact);
+    const chromePad = compact ? 8 : 16;
+    const chromeTotal = statsH + sessionH + touchH + headerH + chromePad;
+    const minStageH = landscape ? 120 : 180;
+    const availableH = Math.max(minStageH, vh - chromeTotal);
+
+    maxW = Math.min(CANVAS_MAX_WIDTH, Math.floor(vw - 12));
+    maxH = Math.min(availableH, Math.round(maxW * CANVAS_ASPECT));
+    maxH = Math.max(minStageH, maxH);
+
+    document.documentElement.style.setProperty('--touch-controls-h', `${touchH}px`);
   } else {
-    maxW = Math.min(CANVAS_MAX_WIDTH, Math.floor(window.innerWidth - 40));
+    maxW = Math.min(CANVAS_MAX_WIDTH, Math.floor(vw - 40));
     maxH = Math.round(maxW * CANVAS_ASPECT);
     const vhCap = Math.floor(vh * 0.82);
     if (maxH > vhCap) {
@@ -377,6 +434,7 @@ function syncGameViewport() {
       maxW = Math.round(maxH / CANVAS_ASPECT);
     }
     maxH = Math.max(480, maxH);
+    document.documentElement.style.removeProperty('--touch-controls-h');
   }
 
   document.documentElement.style.setProperty('--game-stage-max-h', `${maxH}px`);
@@ -386,6 +444,7 @@ function syncGameViewport() {
     gamePlayStack.classList.toggle('game-layout-landscape', landscape && mobile);
     gamePlayStack.classList.toggle('game-layout-portrait', mobile && !landscape);
     gamePlayStack.classList.toggle('game-layout-mobile', mobile);
+    gamePlayStack.classList.toggle('game-layout-compact', compact);
   }
 
   scheduleResizeCanvas();
@@ -424,6 +483,10 @@ function syncTouchLayout() {
   if (touchJump) {
     touchJump.textContent = freeMove ? 'Up' : 'Jump';
     touchJump.setAttribute('aria-label', freeMove ? 'Move up' : 'Jump');
+  }
+  if (touchDown) {
+    touchDown.classList.toggle('is-hidden', !freeMove);
+    touchDown.hidden = !freeMove;
   }
   if (!freeMove) {
     mobileJoystick?.release();
@@ -466,31 +529,32 @@ function setDown(pressed) {
 function syncShockwaveButton() {
   if (!touchShockwave) return;
   const showMobile =
-    shouldUseTouchControls() && isMobileViewport() && isPlaying() && !isPaused;
+    shouldUseTouchControls() && isPlaying() && !isPaused && (isCompactPlayMode() || touchControls?.classList.contains('is-visible'));
   const ready = haloEnergy >= HALO_SHOCKWAVE_COST;
   if (showMobile) {
     touchShockwave.removeAttribute('hidden');
+    touchShockwave.hidden = false;
+    touchShockwave.style.display = 'flex';
     touchShockwave.disabled = !ready;
     touchShockwave.classList.toggle('is-ready', ready);
     touchShockwave.classList.toggle('touch-btn-shockwave--dim', !ready);
   } else {
     touchShockwave.hidden = true;
+    touchShockwave.style.display = '';
     touchShockwave.disabled = true;
     touchShockwave.classList.remove('is-ready', 'touch-btn-shockwave--dim');
   }
 }
 
 function getMobileObstacleSpeedFactor() {
-  return isMobileViewport() && shouldUseTouchControls()
-    ? MOBILE_OBSTACLE_SPEED_FACTOR
-    : 1;
+  return isCompactPlayMode() && shouldUseTouchControls() ? MOBILE_OBSTACLE_SPEED_FACTOR : 1;
 }
 
 /** Player collision bounds — smaller hurtbox on mobile for forgiveness. */
 function getPlayerCollisionBounds() {
   if (!player) return null;
   const b = player.getBounds();
-  if (!isMobileViewport() || !shouldUseTouchControls()) return b;
+  if (!isCompactPlayMode() || !shouldUseTouchControls()) return b;
   const inset = MOBILE_HURTBOX_INSET;
   return {
     x: b.x + inset,
@@ -510,6 +574,7 @@ function syncTouchControls(visible) {
     touchControls.setAttribute('aria-hidden', 'false');
     syncTouchLayout();
     syncShockwaveButton();
+    remeasurePlayChromeAfterLayout();
   } else {
     touchControls.classList.add('is-hidden');
     touchControls.classList.remove('is-visible');
@@ -517,6 +582,36 @@ function syncTouchControls(visible) {
     mobileJoystick?.release();
     clearTouchMovementKeys();
     syncShockwaveButton();
+    if (isMobileViewport()) scheduleSyncGameViewport();
+  }
+}
+
+function syncSessionHudEnergy() {
+  if (!currentUser || !sessionHudEnergy) return;
+
+  sessionHudEnergy.textContent = currentUser.isVip ? '∞' : String(currentUser.energy);
+  sessionHudEnergy.classList.remove(
+    'session-energy-high',
+    'session-energy-mid',
+    'session-energy-low',
+    'session-energy-vip'
+  );
+
+  if (currentUser.isVip) {
+    sessionHudEnergy.classList.add('session-energy-vip');
+  } else if (currentUser.energy > 2) {
+    sessionHudEnergy.classList.add('session-energy-high');
+  } else if (currentUser.energy >= 1) {
+    sessionHudEnergy.classList.add('session-energy-mid');
+  } else {
+    sessionHudEnergy.classList.add('session-energy-low');
+  }
+
+  if (sessionEnergyFill) {
+    const pct = currentUser.isVip
+      ? 100
+      : Math.min(100, Math.max(0, (currentUser.energy / DEFAULT_ENERGY_MAX) * 100));
+    sessionEnergyFill.style.width = `${pct}%`;
   }
 }
 
@@ -524,7 +619,7 @@ function syncPauseButtons() {
   const paused = isPaused;
   const pairs = [
     [btnPause, btnResume],
-    [btnPauseFloat, btnResumeFloat],
+    [btnPauseMobile, btnResumeMobile],
   ];
   for (const [pauseBtn, resumeBtn] of pairs) {
     if (!pauseBtn || !resumeBtn) continue;
@@ -655,7 +750,9 @@ function syncGameplayChrome() {
   if (gamePlayStack) {
     gamePlayStack.classList.toggle('game-view-locked', inRun);
   }
-  if (inRun || isMobileViewport()) {
+  if (inRun) {
+    remeasurePlayChromeAfterLayout();
+  } else if (isMobileViewport()) {
     syncGameViewport();
   }
 }
@@ -823,6 +920,7 @@ function updateDomHud() {
   vipBadge.hidden = !currentUser.isVip;
   layerNameEl.textContent = getLayerName(currentLayer);
   updateEnergyCountdownDisplay();
+  syncSessionHudEnergy();
 }
 
 function syncHudEnergyStyle() {
@@ -957,6 +1055,15 @@ function updateEnergyCountdownDisplay() {
       hudEnergyCountdown.hidden = false;
     } else {
       hudEnergyCountdown.hidden = true;
+    }
+  }
+
+  if (sessionHudEnergyCountdown) {
+    if (showHudCountdown && countdownText) {
+      sessionHudEnergyCountdown.textContent = countdownText;
+      sessionHudEnergyCountdown.hidden = false;
+    } else {
+      sessionHudEnergyCountdown.hidden = true;
     }
   }
 }
@@ -1720,10 +1827,10 @@ const onStopClick = (e) => {
 btnPause?.addEventListener('click', onPauseClick);
 btnResume?.addEventListener('click', onResumeClick);
 btnStop?.addEventListener('click', onStopClick);
-btnPauseFloat?.addEventListener('click', onPauseClick);
-btnResumeFloat?.addEventListener('click', onResumeClick);
-btnStopFloat?.addEventListener('click', onStopClick);
-btnStopFloat?.addEventListener(
+btnPauseMobile?.addEventListener('click', onPauseClick);
+btnResumeMobile?.addEventListener('click', onResumeClick);
+btnStopMobile?.addEventListener('click', onStopClick);
+btnStopMobile?.addEventListener(
   'touchstart',
   (e) => {
     e.preventDefault();
@@ -1731,7 +1838,6 @@ btnStopFloat?.addEventListener(
   },
   { passive: false }
 );
-
 bindRestartButtons();
 bindTouchControls();
 
@@ -1751,6 +1857,7 @@ function bindTouchControls() {
     const press = (e) => {
       e.preventDefault();
       e.stopPropagation();
+      markTouchUiActive();
       if (!isPlaying() || isPaused) return;
       el.classList.add('is-pressed');
       onPress();
@@ -1772,6 +1879,7 @@ function bindTouchControls() {
 
   bindHold(touchLeft, () => setLeft(true), () => setLeft(false));
   bindHold(touchRight, () => setRight(true), () => setRight(false));
+  bindHold(touchDown, () => setDown(true), () => setDown(false));
 
   const onJumpPress = () => {
     if (!isPlaying() || isPaused) return;
@@ -1787,6 +1895,7 @@ function bindTouchControls() {
     const press = (e) => {
       e.preventDefault();
       e.stopPropagation();
+      markTouchUiActive();
       if (!isPlaying() || isPaused) return;
       el.classList.add('is-pressed');
       onPress();
@@ -1806,26 +1915,38 @@ function bindTouchControls() {
 
   bindActionTap(touchJump, onJumpPress, onJumpRelease);
 
-  touchShockwave?.addEventListener('click', (e) => {
+  const onPulsePointerUp = (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
+    markTouchUiActive();
+    const now = Date.now();
+    if (now - lastShockwaveTouchMs < 350) return;
+    lastShockwaveTouchMs = now;
     tryTriggerShockwave();
-  });
-  touchShockwave?.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    tryTriggerShockwave();
-  }, { passive: false });
+  };
+  touchShockwave?.addEventListener('pointerup', onPulsePointerUp);
 }
 
 window.addEventListener('resize', scheduleResizeCanvas);
 window.addEventListener('resize', syncLeaderboardPanelOpen);
-window.addEventListener('resize', syncGameViewport);
+window.addEventListener('resize', scheduleSyncGameViewport);
 window.addEventListener('orientationchange', () => {
-  setTimeout(syncGameViewport, 100);
+  const refreshMobileLayout = () => {
+    syncLeaderboardPanelOpen();
+    if (isPlaying()) {
+      showGameControls(true);
+      syncTouchControls(true);
+      syncPauseButtons();
+    }
+    remeasurePlayChromeAfterLayout();
+  };
+  setTimeout(refreshMobileLayout, 100);
+  setTimeout(refreshMobileLayout, 350);
 });
 window.visualViewport?.addEventListener('resize', scheduleResizeCanvas);
-window.visualViewport?.addEventListener('resize', syncGameViewport);
+window.visualViewport?.addEventListener('resize', scheduleSyncGameViewport);
+window.visualViewport?.addEventListener('scroll', scheduleSyncGameViewport);
 
 const GAME_SCROLL_KEYS = new Set([
   'ArrowUp',

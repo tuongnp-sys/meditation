@@ -19,6 +19,9 @@ export class TouchJoystick {
 
     if (!this.base || !this.stick) return;
 
+    this.mount.style.touchAction = 'none';
+    this.base.style.touchAction = 'none';
+
     this.base.addEventListener('pointerdown', (e) => this.onPointerDown(e));
     this.base.addEventListener('pointermove', (e) => this.onPointerMove(e));
     this.base.addEventListener('pointerup', (e) => this.onPointerUp(e));

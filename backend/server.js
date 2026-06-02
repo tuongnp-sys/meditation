@@ -138,7 +138,10 @@ function saveUsersToDisk() {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
-    fs.writeFileSync(USERS_FILE, JSON.stringify(userDatabase, null, 2), 'utf8');
+    const payload = JSON.stringify(userDatabase, null, 2);
+    const tmpFile = path.join(DATA_DIR, `users.${process.pid}.${Date.now()}.tmp`);
+    fs.writeFileSync(tmpFile, payload, 'utf8');
+    fs.renameSync(tmpFile, USERS_FILE);
   } catch (err) {
     console.error('[storage] Failed to save users:', err.message);
   }

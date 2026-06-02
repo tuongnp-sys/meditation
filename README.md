@@ -247,7 +247,7 @@ On localhost, the frontend automatically uses `http://localhost:3001` — no ext
 | `CORS_ORIGIN` | `https://your-app.vercel.app` |
 | `ADMIN_SECRET` | *(strong secret, optional)* |
 
-6. Add a **persistent disk** (optional) mounted at `backend/data` if you want `users.json` to survive redeploys.
+6. **Persistent disk** is enabled in `render.yaml` (mounted at `backend/data`) so `users.json` survives redeploys.
 7. Note the public URL, e.g. `https://meditation-api.onrender.com`.
 
 ### Frontend — Vercel (recommended)
@@ -285,12 +285,35 @@ Or inject the same line via your host’s “Environment” / head snippet if su
 `main.js` resolves the API base as:
 
 1. `http://localhost:3001` when opened on `localhost` / `127.0.0.1`
-2. Otherwise `window.MEDITATION_API_URL` (required in production)
-3. Falls back to `http://localhost:3001` if unset (only useful for local testing)
+2. Otherwise `window.MEDITATION_API_URL` if set in `index.html`
+3. Otherwise `window.location.origin` (Vercel `/api` proxy via `vercel.json`)
 
 
 
-## 10. Audio Assets
+## 10. Mobile & touch QA checklist
+
+Test on real devices before release (portrait and landscape):
+
+| Check | Portrait | Landscape |
+|-------|----------|-----------|
+| Login + start game | ✓ | ✓ |
+| Stats bar + gold Halo bar visible | ✓ | ✓ |
+| Session Energy row + meter + Pause/Stop | ✓ | ✓ |
+| Layer 1: D-pad + Jump + Pulse (Halo ≥30%) | ✓ | ✓ |
+| Layer 2+: Joystick + Up/Down + Pulse | ✓ | ✓ |
+| Rotate mid-run: layout recovers &lt;500ms | — | ✓ |
+| Stop / logout: music stops, no ghost audio | ✓ | ✓ |
+| Out of energy overlay + countdown | ✓ | ✓ |
+
+**Browsers:** iOS Safari, Chrome Android.
+
+**Desktop regression:** Pause/Stop in `#game-controls`, canvas scales with window, leaderboard panel open by default, keyboard + canvas shockwave.
+
+**API cold start:** first request after idle may be slow (Render free tier); frontend retries network errors up to 3 times.
+
+---
+
+## 11. Audio Assets
 
 Place optional audio files under `frontend/assets/audio/`. The game runs silently if any file is missing.
 

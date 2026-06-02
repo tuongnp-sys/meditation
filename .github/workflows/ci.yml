@@ -27,4 +27,7 @@ jobs:
           node --check js/background.js
           node --check js/obstacle.js
           node --check js/audio.js
+          node --check js/touch-joystick.js
         working-directory: frontend
+      - name: Frontend smoke checks
+        run: node scripts/smoke-check.js

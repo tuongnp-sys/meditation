@@ -77,6 +77,7 @@ Then set Render `CORS_ORIGIN` to your Vercel URL.
 - [ ] Vercel site loads
 - [ ] Login works (no CORS errors in DevTools)
 - [ ] Start game, play, save score, leaderboard
+- [ ] **Mobile:** portrait + landscape — Energy bar, Halo bar, Pulse, touch controls visible (see README §10)
 
 ---
 
