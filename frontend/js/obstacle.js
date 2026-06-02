@@ -42,17 +42,21 @@ function getTimeWithinLayer(layerElapsed, layerDuration) {
   return Math.max(0, Math.min(layerElapsed, layerDuration));
 }
 
-function getSpawnIntervalFactor(layerElapsed, layerDuration) {
+function getSpawnIntervalFactor(layerElapsed, layerDuration, layer = 1) {
   const within = getTimeWithinLayer(layerElapsed, layerDuration);
   const steps = within / WITHIN_LAYER_TIME_STEP;
-  const reduction = steps * SPAWN_INTERVAL_REDUCTION_PER_STEP;
+  let reduction = steps * SPAWN_INTERVAL_REDUCTION_PER_STEP;
+  if (layer >= 5) reduction *= 0.65;
   return Math.max(SPAWN_INTERVAL_MIN_FACTOR, 1 - reduction);
 }
 
-function getSpeedMultiplier(layerElapsed, layerDuration) {
+function getSpeedMultiplier(layerElapsed, layerDuration, layer = 1) {
   const within = getTimeWithinLayer(layerElapsed, layerDuration);
   const steps = within / WITHIN_LAYER_TIME_STEP;
-  const bonus = Math.min(steps * SPEED_BONUS_PER_STEP, SPEED_BONUS_MAX);
+  let cap = SPEED_BONUS_MAX;
+  if (layer >= 5) cap *= 0.55;
+  if (layer >= 6) cap *= 0.85;
+  const bonus = Math.min(steps * SPEED_BONUS_PER_STEP, cap);
   return 1 + bonus;
 }
 
@@ -463,8 +467,8 @@ export class WorldManager {
     } = options;
 
     const layerConfig = getLayerConfig(layer);
-    const spawnIntervalFactor = getSpawnIntervalFactor(layerElapsed, layerDuration);
-    const speedMultiplier = getSpeedMultiplier(layerElapsed, layerDuration) * speedFactor;
+    const spawnIntervalFactor = getSpawnIntervalFactor(layerElapsed, layerDuration, layer);
+    const speedMultiplier = getSpeedMultiplier(layerElapsed, layerDuration, layer) * speedFactor;
     const w = this.canvasWidth;
     const h = this.canvasHeight;
 

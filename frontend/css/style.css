@@ -874,6 +874,37 @@ body.game-active .game-stat-halo-bar {
   transition: width 0.15s ease;
 }
 
+.game-stat-layer-progress {
+  margin-top: 0.35rem;
+  height: 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.game-stat-layer-progress-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #7eb89a, #b8e8d4, #fff0a0);
+  transition: width 0.12s ease;
+}
+
+.game-stat--progress .game-stat-value {
+  color: #b8e8d4;
+}
+
+.game-stat--combo .game-stat-value {
+  color: #ffe566;
+}
+
+.run-summary {
+  margin: 0.65rem 0 0;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: rgba(232, 238, 242, 0.82);
+}
+
 .game-play-stack.game-view-locked {
   position: relative;
   scroll-margin-top: 0.5rem;
@@ -920,12 +951,12 @@ body.game-active .game-stat-halo-bar {
 
 .game-play-stack.game-layout-landscape .touch-btn-shockwave,
 .game-play-stack.game-layout-landscape .touch-btn-jump,
-.game-play-stack.game-layout-landscape .touch-btn-down {
+.game-play-stack.game-layout-landscape .touch-zone-actions .touch-btn:not(.is-hidden):not([hidden]) {
   flex: 0 0 auto;
   flex-shrink: 0;
-  visibility: visible !important;
+  visibility: visible;
   opacity: 1;
-  display: flex !important;
+  display: flex;
   align-items: center;
   justify-content: center;
 }
@@ -1065,12 +1096,52 @@ body.game-mobile-play .touch-controls.is-visible {
 }
 
 .touch-dpad {
-  display: flex;
-  gap: 0.65rem;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(52px, 1fr));
+  grid-template-rows: repeat(3, minmax(52px, auto));
+  gap: 0.35rem;
   align-items: center;
+  justify-items: center;
+  max-width: 11.5rem;
+}
+
+.touch-dpad--ground {
+  display: flex;
+  flex-direction: row;
+  gap: 0.65rem;
+  max-width: none;
+}
+
+.touch-dpad--fly {
+  display: grid;
+}
+
+.touch-dpad #touch-fly-up {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.touch-dpad #touch-left {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.touch-dpad #touch-right {
+  grid-column: 3;
+  grid-row: 2;
+}
+
+.touch-dpad #touch-fly-down {
+  grid-column: 2;
+  grid-row: 3;
 }
 
 .touch-dpad.is-hidden {
+  display: none !important;
+}
+
+.touch-dpad-vert.is-hidden,
+.touch-dpad-vert[hidden] {
   display: none !important;
 }
 
@@ -1486,6 +1557,191 @@ body.game-mobile-play .game-play-stack.game-layout-landscape .touch-zone-actions
   .game-section.is-playing-mobile .layer-name {
     margin-top: 0.35rem;
     font-size: 1rem;
+  }
+}
+
+@media (max-width: 768px) {
+  body.game-mobile-play {
+    background: #1a2332;
+    overflow: hidden;
+  }
+
+  body.game-mobile-play .app {
+    padding: 0;
+    max-width: 100%;
+    min-height: 100dvh;
+    min-height: 100svh;
+  }
+
+  body.game-mobile-play .main,
+  body.game-mobile-play .game-section,
+  body.game-mobile-play .game-play-stack,
+  body.game-mobile-play .game-stage {
+    width: 100%;
+    max-width: 100%;
+    min-height: 0;
+  }
+
+  body.game-mobile-play .game-play-stack {
+    position: relative;
+    margin: 0;
+    overflow: hidden;
+    min-height: 100dvh;
+    min-height: 100svh;
+    padding-top: calc(env(safe-area-inset-top, 0) + 5.9rem);
+    padding-bottom: calc(env(safe-area-inset-bottom, 0) + 5.2rem);
+  }
+
+  body.game-mobile-play .game-stage-viewport {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    margin: 0;
+    min-height: calc(100dvh - 12rem);
+    min-height: calc(100svh - 12rem);
+    align-items: flex-start;
+    justify-content: center;
+  }
+
+  body.game-mobile-play .canvas-wrap {
+    width: 100vw !important;
+    max-width: 100% !important;
+    margin: 0;
+    border-radius: 0;
+    border: 0;
+    box-shadow: none;
+    background: #1a2332;
+  }
+
+  body.game-mobile-play #game-canvas {
+    width: 100% !important;
+    height: auto !important;
+    max-width: 100%;
+  }
+
+  body.game-mobile-play .game-stats-bar:not(.is-hidden) {
+    position: absolute;
+    top: calc(env(safe-area-inset-top, 0) + 0.4rem);
+    left: 0.45rem;
+    right: 0.45rem;
+    z-index: 24;
+    margin: 0;
+    background: linear-gradient(135deg, rgba(18, 28, 36, 0.84), rgba(24, 34, 44, 0.8));
+    backdrop-filter: blur(5px);
+    border-color: rgba(126, 184, 154, 0.26);
+  }
+
+  body.game-mobile-play .game-session-bar:not(.is-hidden) {
+    position: absolute;
+    top: calc(env(safe-area-inset-top, 0) + 3.45rem);
+    left: 0.45rem;
+    right: 0.45rem;
+    z-index: 24;
+    margin: 0;
+    background: linear-gradient(135deg, rgba(18, 26, 34, 0.84), rgba(24, 34, 44, 0.8));
+    backdrop-filter: blur(5px);
+    border-color: rgba(126, 184, 154, 0.24);
+  }
+
+  body.game-mobile-play .touch-controls.is-visible {
+    position: absolute;
+    left: 0.45rem;
+    right: 0.45rem;
+    bottom: calc(env(safe-area-inset-bottom, 0) + 0.45rem);
+    z-index: 24;
+    margin: 0;
+    padding: 0;
+    min-height: 0;
+  }
+
+  body.game-mobile-play .touch-zone-actions {
+    gap: 0.42rem;
+  }
+
+  body.game-mobile-play .touch-btn {
+    min-width: 62px;
+    min-height: 62px;
+    font-size: 0.86rem;
+    background: rgba(16, 24, 32, 0.88);
+    border-color: rgba(126, 184, 154, 0.4);
+  }
+
+  body.game-mobile-play .touch-btn-dir {
+    min-width: 66px;
+    min-height: 66px;
+    font-size: 1.12rem;
+  }
+
+  body.game-mobile-play .overlay {
+    z-index: 30;
+  }
+
+  body.game-mobile-play .layer-name,
+  body.game-mobile-play .controls-hint,
+  body.game-mobile-play .footer {
+    display: none !important;
+  }
+
+  body.game-mobile-play .game-play-stack.game-layout-portrait .game-stats-bar:not(.is-hidden) {
+    top: calc(env(safe-area-inset-top, 0) + 0.34rem);
+  }
+
+  body.game-mobile-play .game-play-stack.game-layout-portrait .game-session-bar:not(.is-hidden) {
+    top: calc(env(safe-area-inset-top, 0) + 3.1rem);
+  }
+
+  body.game-mobile-play .game-play-stack.game-layout-portrait .touch-controls.is-visible {
+    bottom: calc(env(safe-area-inset-bottom, 0) + 0.34rem);
+  }
+
+  body.game-mobile-play .game-play-stack.game-layout-landscape .game-stats-bar:not(.is-hidden) {
+    left: 0.38rem;
+    right: 0.38rem;
+    top: calc(env(safe-area-inset-top, 0) + 0.24rem);
+  }
+
+  body.game-mobile-play .game-play-stack.game-layout-landscape .game-session-bar:not(.is-hidden) {
+    left: 0.38rem;
+    right: 0.38rem;
+    top: calc(env(safe-area-inset-top, 0) + 2.3rem);
+    padding: 0.2rem 0.36rem;
+  }
+
+  body.game-mobile-play .game-play-stack.game-layout-landscape .touch-controls.is-visible {
+    left: 0.38rem;
+    right: 0.38rem;
+    bottom: calc(env(safe-area-inset-bottom, 0) + 0.24rem);
+  }
+
+  body.game-mobile-play .game-play-stack.game-layout-landscape .touch-btn {
+    min-width: 56px;
+    min-height: 56px;
+    font-size: 0.78rem;
+  }
+
+  body.game-mobile-play .game-play-stack.game-layout-landscape .touch-btn-dir {
+    min-width: 58px;
+    min-height: 58px;
+    font-size: 1rem;
+  }
+
+  body.game-mobile-play .game-play-stack.game-layout-landscape {
+    padding-top: calc(env(safe-area-inset-top, 0) + 4.55rem);
+    padding-bottom: calc(env(safe-area-inset-bottom, 0) + 4.45rem);
+  }
+
+  body.game-mobile-play .game-play-stack.game-layout-portrait {
+    padding-top: calc(env(safe-area-inset-top, 0) + 5.7rem);
+    padding-bottom: calc(env(safe-area-inset-bottom, 0) + 5.1rem);
+  }
+
+  body.game-mobile-play .touch-btn-down,
+  body.game-mobile-play #touch-down,
+  body.game-mobile-play #touch-down.is-hidden,
+  body.game-mobile-play #touch-down[hidden] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
   }
 }
 

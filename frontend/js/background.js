@@ -69,10 +69,91 @@ export const LAYER_DURATION_MIN = 45;
 export const LAYER_DURATION_MAX = 90;
 
 /** Layer overlay duration — keep in sync with main.js `layerTransitionTimer`. */
-export const LAYER_TRANSITION_DURATION = 1.8;
+export const LAYER_TRANSITION_DURATION = 2.2;
 
 export const MAX_LAYER = 7;
 export const MAX_DOWNGRADE_STRIKES = 3;
+
+/** Score needed within the current layer to ascend (layer 7 uses victory flow). */
+export const LAYER_SCORE_TARGETS = {
+  1: 180,
+  2: 200,
+  3: 220,
+  4: 240,
+  5: 260,
+  6: 280,
+  7: 0,
+};
+
+/** Soft time cap per layer (seconds) — ascend when reached even if score goal unmet. */
+export const LAYER_TIME_CAP_MAX = 120;
+export const LAYER_TIME_CAP_MIN = 90;
+
+/** In-layer day cycle length (seconds) for gradient tint on lower layers. */
+export const DAY_CYCLE_SEC = 90;
+
+const LAYER_THEMES = {
+  1: ['#1e3328', '#2d4a3e', '#4a7a5a'],
+  2: ['#3a5a8a', '#5a8ab8', '#9ec8f0'],
+  3: ['#1a2848', '#3a5088', '#88b0e8'],
+  4: ['#080c18', '#141c38', '#2a3868'],
+  5: ['#12121a', '#282838', '#585878'],
+  6: ['#281018', '#482820', '#885838'],
+  7: ['#040208', '#0c0820', '#281050'],
+};
+
+const LAYER_THEMES_NIGHT = {
+  1: ['#0e1812', '#162820', '#2a4038'],
+  2: ['#1a2848', '#2a3868', '#4a6090'],
+  3: ['#0a1020', '#1a2848', '#3a5088'],
+};
+
+export function getLayerScoreTarget(layerId) {
+  return LAYER_SCORE_TARGETS[layerId] ?? 200;
+}
+
+/** Time cap shrinks slightly with higher halo (mindfulness). */
+export function getLayerTimeCap(haloEnergy, haloMax = 100) {
+  const t = Math.max(0, Math.min(1, haloEnergy / haloMax));
+  return LAYER_TIME_CAP_MAX - t * (LAYER_TIME_CAP_MAX - LAYER_TIME_CAP_MIN);
+}
+
+function parseHex(hex) {
+  const h = hex.replace('#', '');
+  return {
+    r: parseInt(h.slice(0, 2), 16),
+    g: parseInt(h.slice(2, 4), 16),
+    b: parseInt(h.slice(4, 6), 16),
+  };
+}
+
+function lerpChannel(a, b, t) {
+  return Math.round(a + (b - a) * t);
+}
+
+export function lerpHexColor(a, b, t) {
+  const ca = parseHex(a);
+  const cb = parseHex(b);
+  const r = lerpChannel(ca.r, cb.r, t);
+  const g = lerpChannel(ca.g, cb.g, t);
+  const bl = lerpChannel(ca.b, cb.b, t);
+  return `rgb(${r},${g},${bl})`;
+}
+
+function getThemeColors(layer, cyclePhase = 0) {
+  const base = LAYER_THEMES[layer] || LAYER_THEMES[1];
+  if (layer > 3 || cyclePhase <= 0) return [...base];
+  const night = LAYER_THEMES_NIGHT[layer];
+  if (!night) return [...base];
+  const duskStart = 0.55;
+  if (cyclePhase < duskStart) return [...base];
+  const t = (cyclePhase - duskStart) / (1 - duskStart);
+  return [
+    lerpHexColor(base[0], night[0], t),
+    lerpHexColor(base[1], night[1], t),
+    lerpHexColor(base[2], night[2], t),
+  ];
+}
 
 export function getLayerConfig(layerId) {
   return LAYER_INFO.find((l) => l.id === layerId) || LAYER_INFO[0];
@@ -143,6 +224,10 @@ export class Background {
     this.stars = [];
     this.clouds = [];
     this.sparkles = [];
+    this.layerElapsed = 0;
+    this.transitionBlend = 1;
+    this.transitionFrom = null;
+    this.transitionTo = null;
     this._initParticles();
   }
 
@@ -176,11 +261,22 @@ export class Background {
   setLayer(layer) {
     const next = Math.max(1, Math.min(MAX_LAYER, layer));
     if (next !== this.layer) {
+      this.beginLayerTransition(this.layer, next);
       this.layer = next;
       this._initParticles();
     } else {
       this.layer = next;
     }
+  }
+
+  beginLayerTransition(fromLayer, toLayer) {
+    this.transitionFrom = getThemeColors(fromLayer, 0);
+    this.transitionTo = getThemeColors(toLayer, 0);
+    this.transitionBlend = 0;
+  }
+
+  setLayerElapsed(seconds) {
+    this.layerElapsed = Math.max(0, seconds);
   }
 
   setAscentBorderPulse(value) {
@@ -201,6 +297,9 @@ export class Background {
 
   update(dt) {
     this.time += dt;
+    if (this.transitionBlend < 1) {
+      this.transitionBlend = Math.min(1, this.transitionBlend + dt * 1.4);
+    }
     const w = this.logicalWidth;
     const h = this.logicalHeight;
     const starSpeed = 0.4 + this.layer * 0.35;
@@ -233,23 +332,32 @@ export class Background {
     const h = this.logicalHeight;
     const L = this.layer;
 
-    const themes = {
-      1: ['#1e3328', '#2d4a3e', '#4a7a5a'],
-      2: ['#3a5a8a', '#5a8ab8', '#9ec8f0'],
-      3: ['#1a2848', '#3a5088', '#88b0e8'],
-      4: ['#080c18', '#141c38', '#2a3868'],
-      5: ['#12121a', '#282838', '#585878'],
-      6: ['#281018', '#482820', '#885838'],
-      7: ['#040208', '#0c0820', '#281050'],
-    };
+    const cyclePhase =
+      L <= 3 && DAY_CYCLE_SEC > 0
+        ? (this.layerElapsed % DAY_CYCLE_SEC) / DAY_CYCLE_SEC
+        : 0;
+    let colors = getThemeColors(L, cyclePhase);
 
-    const colors = themes[L] || themes[1];
+    if (this.transitionFrom && this.transitionTo && this.transitionBlend < 1) {
+      const t = this.transitionBlend;
+      colors = colors.map((c, i) =>
+        lerpHexColor(this.transitionFrom[i] || c, this.transitionTo[i] || c, t)
+      );
+    }
+
     const grad = ctx.createLinearGradient(0, 0, 0, h);
     grad.addColorStop(0, colors[2]);
     grad.addColorStop(0.45, colors[1]);
     grad.addColorStop(1, colors[0]);
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, w, h);
+
+    if (this.transitionBlend < 0.35) {
+      ctx.save();
+      ctx.fillStyle = `rgba(255, 240, 180, ${(1 - this.transitionBlend / 0.35) * 0.12})`;
+      ctx.fillRect(0, 0, w, h);
+      ctx.restore();
+    }
 
     if (L >= 2 && L <= 3) this._drawClouds(ctx);
     if (L >= 3) this._drawStars(ctx);

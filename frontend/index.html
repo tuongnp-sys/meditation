@@ -85,9 +85,13 @@
                 <span class="game-stat-label">Layer</span>
                 <span id="stat-layer" class="game-stat-value">1 / 7</span>
               </div>
-              <div class="game-stat game-stat--time">
-                <span class="game-stat-label">Time</span>
-                <span id="stat-time" class="game-stat-value">0s</span>
+              <div class="game-stat game-stat--progress">
+                <span class="game-stat-label">Ascend</span>
+                <span id="stat-progress" class="game-stat-value">0 / 180</span>
+              </div>
+              <div class="game-stat game-stat--combo">
+                <span class="game-stat-label">Flow</span>
+                <span id="stat-combo" class="game-stat-value">0</span>
               </div>
               <div class="game-stat game-stat--score">
                 <span class="game-stat-label">Score</span>
@@ -106,6 +110,9 @@
             </div>
             <div class="game-stat-halo-bar" aria-hidden="true">
               <div id="stat-halo-fill" class="game-stat-halo-fill"></div>
+            </div>
+            <div class="game-stat-layer-progress" aria-hidden="true">
+              <div id="stat-layer-progress-fill" class="game-stat-layer-progress-fill"></div>
             </div>
           </div>
 
@@ -140,7 +147,7 @@
               <h2>Center Your Focus</h2>
               <div class="overlay-mobile-only">
                 <p>Left: move · Right: <strong>Jump</strong> · Gold = shield; avoid gray thoughts.</p>
-                <p>Layer 2+: drag the left joystick · <strong>Up</strong>/<strong>Down</strong> buttons · Halo ≥30%: <strong>Pulse</strong>.</p>
+                <p>Layer 2+: use the <strong>arrow pad</strong> (4 directions) · Halo ≥30%: <strong>Pulse</strong>.</p>
                 <p class="overlay-note">Each new run from Layer 1 uses 1 energy (VIP plays freely).</p>
               </div>
               <div class="overlay-desktop-only">
@@ -175,6 +182,7 @@
               <h2>Focus Lost</h2>
               <p id="gameover-message">Three layer downgrades ended your ascent.</p>
               <p>Final score: <strong id="final-score">0</strong></p>
+              <p id="gameover-run-summary" class="run-summary"></p>
               <p id="record-message" class="record-message is-hidden">New personal best saved!</p>
               <button type="button" id="btn-retry" class="btn btn-primary restart-btn" aria-label="Try again after focus lost">Try Again</button>
             </div>
@@ -183,6 +191,7 @@
               <h2>Session Ended</h2>
               <p id="surrender-message">You actively stopped the meditation.</p>
               <p>Final score: <strong id="surrender-score">0</strong></p>
+              <p id="surrender-run-summary" class="run-summary"></p>
               <p id="surrender-record-message" class="record-message is-hidden">New personal best saved!</p>
               <button type="button" id="btn-surrender-back" class="btn btn-secondary" aria-label="Return to meditation start screen">Return</button>
               <button type="button" id="btn-surrender-restart" class="btn btn-primary restart-btn" aria-label="Start a new meditation run">Meditate Again</button>
@@ -198,6 +207,7 @@
               <p>You have attained enlightenment. Your halo radiates beyond all space — boundless and luminous.</p>
               <p>Final score: <strong id="victory-score">0</strong></p>
               <p>Best score: <strong id="victory-best">0</strong></p>
+              <p id="victory-run-summary" class="run-summary"></p>
               <p id="victory-record-message" class="record-message is-hidden">New personal best saved!</p>
               <button type="button" id="meditateAgainBtn" class="btn btn-primary restart-btn" aria-label="Start a new meditation run after victory">Meditate Again</button>
             </div>
@@ -206,9 +216,11 @@
 
             <div id="touch-controls" class="touch-controls is-hidden" aria-hidden="true">
               <div class="touch-zone touch-zone-move">
-                <div id="touch-dpad" class="touch-dpad">
+                <div id="touch-dpad" class="touch-dpad touch-dpad--ground">
+                  <button type="button" id="touch-fly-up" class="touch-btn touch-btn-dir touch-dpad-vert is-hidden" aria-label="Move up" hidden>▲</button>
                   <button type="button" id="touch-left" class="touch-btn touch-btn-dir" aria-label="Move left">◀</button>
                   <button type="button" id="touch-right" class="touch-btn touch-btn-dir" aria-label="Move right">▶</button>
+                  <button type="button" id="touch-fly-down" class="touch-btn touch-btn-dir touch-dpad-vert is-hidden" aria-label="Move down" hidden>▼</button>
                 </div>
                 <div id="touch-joystick-mount" class="touch-joystick-mount is-hidden" aria-hidden="true">
                   <div class="joystick-base" aria-hidden="true">

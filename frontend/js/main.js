@@ -8,7 +8,11 @@ import {
   getLayerName,
   getLayerAscendMessage,
   getLayerDescendMessage,
+  getLayerScoreTarget,
+  getLayerTimeCap,
 } from './background.js';
+import { ParticleSystem } from './particles.js';
+import { evaluateAchievements, getAchievementLabel } from './achievements.js';
 import { Player } from './player.js';
 import {
   WorldManager,
@@ -36,7 +40,15 @@ const API_BASE =
     : (window.MEDITATION_API_URL || window.location.origin);
 
 
-const POINTS_PER_CLEAR = 12;
+const POINTS_PER_CLEAR = 10;
+const POINTS_SCRIPTURE = 20;
+const POINTS_SURVIVAL_INTERVAL = 3;
+const POINTS_SURVIVAL_AMOUNT = 2;
+const SCORE_LAYER_ASCEND_BASE = 40;
+const SCORE_LAYER_ASCEND_BONUS_MAX = 60;
+const COMBO_SCRIPTURE_THRESHOLD = 5;
+const COMBO_SCORE_MULTIPLIER = 2;
+const MAX_SHOCKWAVE_CLEARS_SCORED = 8;
 const HALO_SCRIPTURE_GAIN = 25;
 const HALO_SHOCKWAVE_COST = 30;
 /** Mario-style: halo is lost only when touching a temptation, not over time. */
@@ -49,6 +61,7 @@ const MOBILE_HURTBOX_INSET = 3;
 /** Matches portrait phones and landscape phones (wide but short viewport). */
 const MOBILE_VIEWPORT_MQ =
   '(max-width: 767px), (max-height: 520px) and (max-width: 1100px) and (pointer: coarse)';
+const MOBILE_OVERLAY_MQ = '(max-width: 768px)';
 const DEFAULT_ENERGY_MAX = 5;
 const HIT_FLASH_DURATION = 0.15;
 const HIT_FLASH_MAX_ALPHA = 0.22;
@@ -56,7 +69,6 @@ const FLOATING_TEXT_MAX = 12;
 const FLOATING_TEXT_DURATION = 0.8;
 const FLOATING_TEXT_RISE = 48;
 const PROTECTIVE_CHARGES_MAX = 2;
-const SCORE_PER_LAYER_ASCEND = 50;
 
 /** Layout reference — game logic always uses this coordinate space; CSS scales display. */
 const CANVAS_REF_WIDTH = 900;
@@ -110,7 +122,9 @@ const gameStageViewport = document.getElementById('game-stage-viewport');
 const canvasWrap = document.querySelector('.canvas-wrap');
 const gameStatsBar = document.getElementById('game-stats-bar');
 const statLayer = document.getElementById('stat-layer');
-const statTime = document.getElementById('stat-time');
+const statProgress = document.getElementById('stat-progress');
+const statCombo = document.getElementById('stat-combo');
+const statLayerProgressFill = document.getElementById('stat-layer-progress-fill');
 const statScore = document.getElementById('stat-score');
 const statBest = document.getElementById('stat-best');
 const statHalo = document.getElementById('stat-halo');
@@ -147,6 +161,8 @@ const touchDpad = document.getElementById('touch-dpad');
 const touchJoystickMount = document.getElementById('touch-joystick-mount');
 const touchLeft = document.getElementById('touch-left');
 const touchRight = document.getElementById('touch-right');
+const touchFlyUp = document.getElementById('touch-fly-up');
+const touchFlyDown = document.getElementById('touch-fly-down');
 const touchJump = document.getElementById('touch-jump');
 const touchDown = document.getElementById('touch-down');
 const touchShockwave = document.getElementById('touch-shockwave');
@@ -165,6 +181,9 @@ const layerTransitionDesc = document.getElementById('layer-transition-desc');
 const victoryScoreEl = document.getElementById('victory-score');
 const victoryBestEl = document.getElementById('victory-best');
 const victoryRecordMessage = document.getElementById('victory-record-message');
+const gameoverRunSummary = document.getElementById('gameover-run-summary');
+const surrenderRunSummary = document.getElementById('surrender-run-summary');
+const victoryRunSummary = document.getElementById('victory-run-summary');
 
 const MENU_OVERLAYS = [overlayStart, overlayEnergy];
 const END_OVERLAYS = [victoryOverlay, gameOverOverlay, surrenderOverlay];
@@ -206,10 +225,25 @@ let hitFlashTimer = 0;
 let suppressCanvasClickUntil = 0;
 let lastShockwaveTouchMs = 0;
 let viewportSyncTimer = null;
+/** @type {Set<HTMLElement>} */
+const activePointerHolds = new Set();
+/** Normalized analog from joystick when enabled (-1..1). */
+const touchMoveVector = { x: 0, y: 0 };
 let energyCountdownTimer = null;
 /** @type {{ energy: number, isVip: boolean, nextRefillAt: string | null, msUntilRefill: number } | null} */
 let energyStatus = null;
 let rememberUsername = true;
+
+let layerScore = 0;
+let layerScoreTarget = 180;
+let layerTimeCap = 120;
+let survivalTimer = 0;
+let scriptureCombo = 0;
+let maxScriptureCombo = 0;
+let scripturesCollectedRun = 0;
+let shockwaveClearsThisWave = 0;
+/** @type {ParticleSystem | null} */
+let particles = null;
 
 // --- Floating feedback text --------------------------------------------------
 
@@ -345,6 +379,10 @@ function isMobileViewport() {
   return window.matchMedia(MOBILE_VIEWPORT_MQ).matches;
 }
 
+function isMobileOverlayViewport() {
+  return window.matchMedia(MOBILE_OVERLAY_MQ).matches;
+}
+
 function shouldUseTouchControls() {
   return isMobileViewport() || 'ontouchstart' in window;
 }
@@ -414,13 +452,19 @@ function syncGameViewport() {
   let maxW = CANVAS_MAX_WIDTH;
 
   if (mobile) {
+    const overlayChrome = compact && isMobileOverlayViewport();
     const { statsH, sessionH, touchH, headerH } = measurePlayChrome(compact);
     const chromePad = compact ? 8 : 16;
-    const chromeTotal = statsH + sessionH + touchH + headerH + chromePad;
+    const overlayReserved = landscape ? 132 : 186;
+    const chromeTotal = overlayChrome
+      ? overlayReserved
+      : statsH + sessionH + touchH + headerH + chromePad;
     const minStageH = landscape ? 120 : 180;
     const availableH = Math.max(minStageH, vh - chromeTotal);
 
-    maxW = Math.min(CANVAS_MAX_WIDTH, Math.floor(vw - 12));
+    maxW = overlayChrome
+      ? Math.min(CANVAS_MAX_WIDTH, Math.floor(vw))
+      : Math.min(CANVAS_MAX_WIDTH, Math.floor(vw - 12));
     maxH = Math.min(availableH, Math.round(maxW * CANVAS_ASPECT));
     maxH = Math.max(minStageH, maxH);
 
@@ -462,44 +506,127 @@ function isOutOfEnergy() {
   return Boolean(currentUser && !currentUser.isVip && currentUser.energy <= 0);
 }
 
-function clearTouchMovementKeys() {
+function clearTouchMovementKeys(force = false) {
+  if (!force && activePointerHolds.size > 0) return;
   setLeft(false);
   setRight(false);
   setUp(false);
   setDown(false);
+  touchMoveVector.x = 0;
+  touchMoveVector.y = 0;
+}
+
+function hasActiveTouchMovement() {
+  return activePointerHolds.size > 0 || touchMoveVector.x !== 0 || touchMoveVector.y !== 0;
 }
 
 function syncTouchLayout() {
   const freeMove = currentLayer >= 2;
+
   if (touchDpad) {
-    touchDpad.classList.toggle('is-hidden', freeMove);
-    touchDpad.hidden = freeMove;
+    touchDpad.classList.remove('is-hidden');
+    touchDpad.hidden = false;
+    touchDpad.classList.toggle('touch-dpad--ground', !freeMove);
+    touchDpad.classList.toggle('touch-dpad--fly', freeMove);
   }
+
   if (touchJoystickMount) {
-    touchJoystickMount.classList.toggle('is-hidden', !freeMove);
-    touchJoystickMount.hidden = !freeMove;
-    touchJoystickMount.setAttribute('aria-hidden', freeMove ? 'true' : 'false');
-  }
-  if (touchJump) {
-    touchJump.textContent = freeMove ? 'Up' : 'Jump';
-    touchJump.setAttribute('aria-label', freeMove ? 'Move up' : 'Jump');
-  }
-  if (touchDown) {
-    touchDown.classList.toggle('is-hidden', !freeMove);
-    touchDown.hidden = !freeMove;
-  }
-  if (!freeMove) {
+    touchJoystickMount.classList.add('is-hidden');
+    touchJoystickMount.hidden = true;
+    touchJoystickMount.setAttribute('aria-hidden', 'true');
     mobileJoystick?.release();
-    applyJoystickToKeys(0, 0);
+  }
+
+  const showVert = freeMove;
+  for (const el of [touchFlyUp, touchFlyDown]) {
+    if (!el) continue;
+    el.classList.toggle('is-hidden', !showVert);
+    el.hidden = !showVert;
+  }
+
+  if (touchJump) {
+    touchJump.classList.toggle('is-hidden', freeMove);
+    touchJump.hidden = freeMove;
+    if (!freeMove) {
+      touchJump.textContent = 'Jump';
+      touchJump.setAttribute('aria-label', 'Jump');
+    }
+  }
+
+  if (touchDown) {
+    touchDown.classList.add('is-hidden');
+    touchDown.hidden = true;
+  }
+
+  if (!freeMove) {
+    touchMoveVector.x = 0;
+    touchMoveVector.y = 0;
+    setUp(false);
+    setDown(false);
+    if (touchFlyUp) activePointerHolds.delete(touchFlyUp);
+    if (touchFlyDown) activePointerHolds.delete(touchFlyDown);
+    if (!hasActiveTouchMovement()) {
+      clearTouchMovementKeys(true);
+    }
   }
 }
 
-function applyJoystickToKeys(dx, dy) {
-  const threshold = 0.35;
-  setLeft(dx < -threshold);
-  setRight(dx > threshold);
-  setUp(dy < -threshold);
-  setDown(dy > threshold);
+function setTouchMoveVector(dx, dy) {
+  touchMoveVector.x = dx;
+  touchMoveVector.y = dy;
+}
+
+function getPlayerMoveOptions() {
+  const freeMove = currentLayer >= 2;
+  if (!freeMove) return { freeMove: false };
+
+  let moveVector = null;
+  if (touchMoveVector.x !== 0 || touchMoveVector.y !== 0) {
+    moveVector = { x: touchMoveVector.x, y: touchMoveVector.y };
+  }
+  return { freeMove: true, moveVector };
+}
+
+function bindPointerHold(el, onPress, onRelease) {
+  if (!el) return;
+
+  let capturedId = null;
+
+  const finish = (e) => {
+    if (capturedId === null || e.pointerId !== capturedId) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (el.hasPointerCapture?.(capturedId)) {
+      el.releasePointerCapture(capturedId);
+    }
+    capturedId = null;
+    el.classList.remove('is-pressed');
+    activePointerHolds.delete(el);
+    onRelease();
+  };
+
+  const onDown = (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (capturedId !== null) return;
+    e.preventDefault();
+    e.stopPropagation();
+    markTouchUiActive();
+    if (!isPlaying() || isPaused) return;
+    capturedId = e.pointerId;
+    try {
+      el.setPointerCapture(capturedId);
+    } catch {
+      /* ignore */
+    }
+    el.classList.add('is-pressed');
+    activePointerHolds.add(el);
+    onPress();
+  };
+
+  el.addEventListener('pointerdown', onDown);
+  el.addEventListener('pointerup', finish);
+  el.addEventListener('pointercancel', finish);
+  el.addEventListener('lostpointercapture', finish);
 }
 
 function setLeft(pressed) {
@@ -580,7 +707,8 @@ function syncTouchControls(visible) {
     touchControls.classList.remove('is-visible');
     touchControls.setAttribute('aria-hidden', 'true');
     mobileJoystick?.release();
-    clearTouchMovementKeys();
+    activePointerHolds.clear();
+    clearTouchMovementKeys(true);
     syncShockwaveButton();
     if (isMobileViewport()) scheduleSyncGameViewport();
   }
@@ -778,6 +906,14 @@ function resetRunVariables() {
   protectiveCharges = 0;
   layerElapsed = 0;
   layerDuration = getLayerDuration(haloEnergy, HALO_MAX);
+  layerScore = 0;
+  layerScoreTarget = getLayerScoreTarget(1);
+  layerTimeCap = getLayerTimeCap(0, HALO_MAX);
+  survivalTimer = 0;
+  scriptureCombo = 0;
+  maxScriptureCombo = 0;
+  scripturesCollectedRun = 0;
+  shockwaveClearsThisWave = 0;
   pendingLayerUp = false;
   layerTransitionTimer = 0;
   layerTransitionAscending = false;
@@ -785,8 +921,10 @@ function resetRunVariables() {
   isPaused = false;
   hitFlashTimer = 0;
   floatingTexts.reset();
+  particles?.reset();
   world?.reset();
   background?.setVictoryGlow(0);
+  background?.setLayerElapsed(0);
   player?.setProtectiveCharges(0);
 }
 
@@ -796,7 +934,8 @@ function refreshLayerDuration() {
 
 function resetLayerTimer() {
   layerElapsed = 0;
-  refreshLayerDuration();
+  resetLayerProgress();
+  background?.setLayerElapsed(0);
 }
 
 function stopGameLoop() {
@@ -837,22 +976,87 @@ function getDisplayBestScore() {
   return Math.max(saved, score);
 }
 
+function getScoreMultiplier() {
+  return scriptureCombo >= COMBO_SCRIPTURE_THRESHOLD ? COMBO_SCORE_MULTIPLIER : 1;
+}
+
+function addScore(amount, options = {}) {
+  if (!amount || amount <= 0 || !isPlaying()) return 0;
+  const mult = options.applyCombo === false ? 1 : getScoreMultiplier();
+  const gained = Math.round(amount * mult);
+  score += gained;
+  layerScore += gained;
+  if (options.x != null && options.y != null) {
+    const label = mult > 1 ? `+${gained} x${mult}` : `+${gained}`;
+    floatingTexts.spawn(options.x, options.y, label, options.kind || 'score');
+  }
+  return gained;
+}
+
+function resetLayerProgress() {
+  layerScore = 0;
+  layerScoreTarget = getLayerScoreTarget(currentLayer);
+  layerTimeCap = getLayerTimeCap(haloEnergy, HALO_MAX);
+  survivalTimer = 0;
+  refreshLayerDuration();
+}
+
+function getRunStatsSnapshot(victory = false) {
+  return {
+    score,
+    maxLayer: currentLayer,
+    victory,
+    downgradeStrikes,
+    scripturesCollected: scripturesCollectedRun,
+    maxCombo: maxScriptureCombo,
+  };
+}
+
+function formatRunSummaryLines() {
+  return [
+    `Layer reached: ${currentLayer} / ${MAX_LAYER}`,
+    `Scriptures: ${scripturesCollectedRun} · Best flow: ${maxScriptureCombo}`,
+    `Downgrades: ${downgradeStrikes} / ${MAX_DOWNGRADE_STRIKES}`,
+  ];
+}
+
+function fillRunSummaryElement(el, achievementIds = []) {
+  if (!el) return;
+  const lines = formatRunSummaryLines();
+  if (achievementIds.length > 0) {
+    const names = achievementIds.map(getAchievementLabel).join(', ');
+    lines.push(`New focus: ${names}`);
+  }
+  el.textContent = lines.join(' · ');
+}
+
 // --- Run stats (DOM above canvas) --------------------------------------------
 
 function updateRunStatsDom() {
   if (!gameStatsBar || gameState !== GameState.PLAYING) return;
 
   const best = getDisplayBestScore();
-  const timeLeft = Math.max(0, Math.ceil(layerDuration - layerElapsed));
   const strikeColors = ['#8a9ba8', '#d4a574', '#c97b7b'];
   const strikeIdx = Math.min(downgradeStrikes, 2);
+  const progressPct =
+    layerScoreTarget > 0 ? Math.min(100, (layerScore / layerScoreTarget) * 100) : 100;
 
   if (statLayer) statLayer.textContent = `${currentLayer} / ${MAX_LAYER}`;
-  if (statTime) statTime.textContent = `${timeLeft}s`;
+  if (statProgress) {
+    statProgress.textContent =
+      layerScoreTarget > 0 ? `${layerScore} / ${layerScoreTarget}` : `${layerScore}`;
+  }
+  if (statCombo) {
+    const mult = getScoreMultiplier();
+    statCombo.textContent = mult > 1 ? `${scriptureCombo} x${mult}` : String(scriptureCombo);
+  }
   if (statScore) statScore.textContent = String(score);
   if (statBest) statBest.textContent = String(best);
   if (statHalo) statHalo.textContent = `${Math.round(haloEnergy)}%`;
   if (statHaloFill) statHaloFill.style.width = `${(haloEnergy / HALO_MAX) * 100}%`;
+  if (statLayerProgressFill) {
+    statLayerProgressFill.style.width = `${progressPct}%`;
+  }
 
   if (statShield) {
     if (protectiveCharges > 0) {
@@ -906,6 +1110,7 @@ function paintFrame() {
   world.draw(ctx);
   drawPlayerHaloAura();
   player.draw(ctx);
+  particles?.draw(ctx);
   floatingTexts.draw(ctx);
   updateRunStatsDom();
   drawHitFlash();
@@ -1206,7 +1411,9 @@ function renderLeaderboard(entries) {
 
     const score = document.createElement('span');
     score.className = 'leaderboard-score';
-    score.textContent = String(entry.highScore);
+    const layerNote =
+      entry.maxLayer && entry.maxLayer > 0 ? ` · L${entry.maxLayer}` : '';
+    score.textContent = `${entry.highScore}${layerNote}`;
 
     li.append(rank, name, score);
     leaderboardList.appendChild(li);
@@ -1337,10 +1544,16 @@ function enterPlayingMode(token) {
   if (!player) player = new Player(canvas);
   if (!world) world = new WorldManager(logicalWidth, logicalHeight);
   else world.reset();
+  if (!particles) particles = new ParticleSystem();
+
+  player.onJump = (center) => {
+    particles?.spawnBurst(center.x, center.y, 'dust');
+  };
 
   resizeCanvas();
   player.resetPosition();
   background.setLayer(1);
+  resetLayerProgress();
 
   setGameState(GameState.PLAYING);
   isPaused = false;
@@ -1397,6 +1610,7 @@ async function persistScoreAsync(token) {
     const data = await apiPost('/api/save-score', {
       username: currentUser.username,
       score,
+      maxLayer: currentLayer,
     });
     if (!isSessionActive(token)) return false;
     currentUser = data.user;
@@ -1438,6 +1652,12 @@ function showSurrenderScreen() {
 
 function finishRun({ victory = false, surrender = false, reason = '' } = {}) {
   const token = sessionToken;
+  const runStats = getRunStatsSnapshot(victory);
+  const newAchievements = evaluateAchievements(runStats);
+  fillRunSummaryElement(gameoverRunSummary, newAchievements);
+  fillRunSummaryElement(surrenderRunSummary, newAchievements);
+  fillRunSummaryElement(victoryRunSummary, newAchievements);
+
   stopGameLoop();
   stopGameAudio();
   isPaused = false;
@@ -1508,6 +1728,9 @@ function tryTriggerShockwave() {
   if (haloEnergy < HALO_SHOCKWAVE_COST) return;
   if (!player.triggerShockwave()) return;
   haloEnergy = clampHalo(haloEnergy - HALO_SHOCKWAVE_COST);
+  shockwaveClearsThisWave = 0;
+  const c = player.getCenter();
+  particles?.spawnBurst(c.x, c.y, 'ripple');
   playSfx('shockwave');
 }
 
@@ -1516,15 +1739,29 @@ function processShockwaveClears() {
   if (!wave || !world) return;
   const clearedPositions = clearTemptationsInShockwave(world.temptations, wave);
   if (clearedPositions.length > 0) {
-    score += clearedPositions.length * POINTS_PER_CLEAR;
-    for (const pos of clearedPositions) {
-      floatingTexts.spawn(pos.x, pos.y, `+${POINTS_PER_CLEAR}`, 'score');
+    const toScore = Math.min(
+      clearedPositions.length,
+      Math.max(0, MAX_SHOCKWAVE_CLEARS_SCORED - shockwaveClearsThisWave)
+    );
+    shockwaveClearsThisWave += toScore;
+    for (let i = 0; i < toScore; i++) {
+      const pos = clearedPositions[i];
+      addScore(POINTS_PER_CLEAR, { x: pos.x, y: pos.y, kind: 'score' });
+      particles?.spawnBurst(pos.x, pos.y, 'ripple', { count: 10 });
+    }
+    if (clearedPositions[0]) {
+      floatingTexts.spawn(
+        clearedPositions[0].x,
+        clearedPositions[0].y,
+        `Cleared ${clearedPositions.length}`,
+        'halo'
+      );
     }
     updateDomHud();
   }
 }
 
-// --- Victory & layers (time-based) -------------------------------------------
+// --- Victory & layers (score + time cap) -------------------------------------
 
 function ascendLayer() {
   if (!isPlaying() || pendingLayerUp) return;
@@ -1537,22 +1774,43 @@ function ascendLayer() {
   }
 
   pendingLayerUp = true;
-  score += SCORE_PER_LAYER_ASCEND;
+  const timeRatio =
+    layerTimeCap > 0 ? Math.max(0, (layerTimeCap - layerElapsed) / layerTimeCap) : 0;
+  const haloRatio = haloEnergy / HALO_MAX;
+  const ascendBonus = Math.round(
+    SCORE_LAYER_ASCEND_BASE +
+      SCORE_LAYER_ASCEND_BONUS_MAX * (timeRatio * 0.55 + haloRatio * 0.45)
+  );
+  addScore(ascendBonus, { applyCombo: false });
+  const c = player?.getCenter();
+  if (c) particles?.spawnBurst(c.x, c.y, 'ascend');
+
   currentLayer += 1;
   background.setLayer(currentLayer);
   world?.reset();
   playLayerMusic(currentLayer);
   showLayerTransition(currentLayer);
-  announceGame(`Layer ascended. ${getLayerName(currentLayer)}.`);
+  announceGame(`Layer ascended. ${getLayerName(currentLayer)}. +${ascendBonus} focus.`);
 }
 
-function checkLayerTimer(dt) {
+function checkLayerProgress(dt) {
   if (!isPlaying() || isPaused || pendingLayerUp || layerTransitionTimer > 0) return;
 
   layerElapsed += dt;
+  background?.setLayerElapsed(layerElapsed);
   refreshLayerDuration();
+  layerTimeCap = getLayerTimeCap(haloEnergy, HALO_MAX);
 
-  if (layerElapsed >= layerDuration) {
+  survivalTimer += dt;
+  if (survivalTimer >= POINTS_SURVIVAL_INTERVAL) {
+    survivalTimer -= POINTS_SURVIVAL_INTERVAL;
+    addScore(POINTS_SURVIVAL_AMOUNT, { applyCombo: true });
+  }
+
+  const scoreReady = layerScoreTarget > 0 && layerScore >= layerScoreTarget;
+  const timeCapReached = layerElapsed >= layerTimeCap;
+
+  if (scoreReady || timeCapReached) {
     ascendLayer();
   }
 }
@@ -1581,7 +1839,10 @@ function finishLayerTransition() {
   layerTransitionAscending = false;
   hideOverlay(overlayLayer);
   if (background) background.setAscentBorderPulse(0);
-  if (isPlaying()) resetLayerTimer();
+  if (isPlaying()) {
+    resetLayerTimer();
+    scriptureCombo = 0;
+  }
 }
 
 function updateLayerTransitionState(dt) {
@@ -1616,6 +1877,9 @@ function handleTemptationCollision() {
     const lost = Math.min(protectiveCharges, 1 + Math.floor(Math.random() * 2));
     protectiveCharges = Math.max(0, protectiveCharges - lost);
     player.setProtectiveCharges(protectiveCharges);
+    const c = player.getCenter();
+    particles?.spawnBurst(c.x, c.y, 'shieldPop');
+    floatingTexts.spawn(c.x, c.y - 10, '-Shield', 'halo');
     playSfx('duc');
     announceGame(
       protectiveCharges > 0
@@ -1628,6 +1892,10 @@ function handleTemptationCollision() {
   playSfx('duc');
   loseHaloOnTemptationHit();
   refreshLayerDuration();
+  scriptureCombo = 0;
+  const c = player.getCenter();
+  particles?.spawnBurst(c.x, c.y, 'dull');
+  floatingTexts.spawn(c.x, c.y - 10, '-Halo', 'default');
 
   downgradeStrikes += 1;
   announceGame(`Tainted by negative thought. Downgrades: ${downgradeStrikes} of ${MAX_DOWNGRADE_STRIKES}.`);
@@ -1645,7 +1913,7 @@ function handleTemptationCollision() {
     playLayerMusic(currentLayer);
     showLayerTransition(currentLayer, true);
   } else {
-    layerElapsed = 0;
+    resetLayerTimer();
     world?.reset();
     announceGame(getLayerDescendMessage(1));
   }
@@ -1692,8 +1960,11 @@ function gameLoop(timestamp) {
   background.update(dt);
 
   if (!inLayerTransition) {
-    player.update(dt, keys, { freeMove: currentLayer >= 2 });
-    checkLayerTimer(dt);
+    player.update(dt, keys, getPlayerMoveOptions());
+    checkLayerProgress(dt);
+    particles?.update(dt);
+  } else if (particles) {
+    particles.update(dt);
   }
 
   const worldDt = inLayerTransition ? dt * 0.25 : dt;
@@ -1714,7 +1985,13 @@ function gameLoop(timestamp) {
       grantProtectiveCharges();
       playSfx('ten');
       for (const pos of scripturePickups) {
+        scriptureCombo += 1;
+        scripturesCollectedRun += 1;
+        maxScriptureCombo = Math.max(maxScriptureCombo, scriptureCombo);
+        addScore(POINTS_SCRIPTURE, { x: pos.x, y: pos.y, kind: 'score' });
+        floatingTexts.spawn(pos.x, pos.y - 14, '+Scripture', 'halo');
         floatingTexts.spawn(pos.x, pos.y, '+Shield', 'halo');
+        particles?.spawnBurst(pos.x, pos.y, 'gold');
       }
       updateDomHud();
     }
@@ -1846,40 +2123,15 @@ function bindTouchControls() {
     mobileJoystick = new TouchJoystick(touchJoystickMount, {
       onChange: (dx, dy) => {
         if (!isPlaying() || isPaused || currentLayer < 2) return;
-        applyJoystickToKeys(dx, dy);
+        setTouchMoveVector(dx, dy);
       },
     });
   }
 
-  const bindHold = (el, onPress, onRelease) => {
-    if (!el) return;
-
-    const press = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      markTouchUiActive();
-      if (!isPlaying() || isPaused) return;
-      el.classList.add('is-pressed');
-      onPress();
-    };
-    const release = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      el.classList.remove('is-pressed');
-      onRelease();
-    };
-
-    el.addEventListener('touchstart', press, { passive: false });
-    el.addEventListener('touchend', release, { passive: false });
-    el.addEventListener('touchcancel', release, { passive: false });
-    el.addEventListener('mousedown', press);
-    el.addEventListener('mouseup', release);
-    el.addEventListener('mouseleave', release);
-  };
-
-  bindHold(touchLeft, () => setLeft(true), () => setLeft(false));
-  bindHold(touchRight, () => setRight(true), () => setRight(false));
-  bindHold(touchDown, () => setDown(true), () => setDown(false));
+  bindPointerHold(touchLeft, () => setLeft(true), () => setLeft(false));
+  bindPointerHold(touchRight, () => setRight(true), () => setRight(false));
+  bindPointerHold(touchFlyUp, () => setUp(true), () => setUp(false));
+  bindPointerHold(touchFlyDown, () => setDown(true), () => setDown(false));
 
   const onJumpPress = () => {
     if (!isPlaying() || isPaused) return;

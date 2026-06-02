@@ -21,6 +21,8 @@ export class Player {
     this.enlightenment = 0;
     this.protectiveCharges = 0;
     this.pickupFlash = 0;
+    /** @type {((center: { x: number, y: number }) => void) | null} */
+    this.onJump = null;
     this.resetPosition();
   }
 
@@ -69,6 +71,9 @@ export class Player {
   jump() {
     if (this.isOnGround()) {
       this.velocityY = -this.jumpForce;
+      if (this.onJump) {
+        this.onJump(this.getCenter());
+      }
     }
   }
 
@@ -121,15 +126,21 @@ export class Player {
   }
 
   update(dt, keys, options = {}) {
-    const { freeMove = false } = options;
+    const { freeMove = false, moveVector = null } = options;
 
     if (freeMove) {
       let dx = 0;
       let dy = 0;
-      if (keys.ArrowLeft || keys.KeyA || keys.a) dx -= 1;
-      if (keys.ArrowRight || keys.KeyD || keys.d) dx += 1;
-      if (keys.ArrowUp || keys.KeyW || keys.w) dy -= 1;
-      if (keys.ArrowDown || keys.KeyS || keys.s) dy += 1;
+
+      if (moveVector && (moveVector.x !== 0 || moveVector.y !== 0)) {
+        dx = moveVector.x;
+        dy = moveVector.y;
+      } else {
+        if (keys.ArrowLeft || keys.KeyA || keys.a) dx -= 1;
+        if (keys.ArrowRight || keys.KeyD || keys.d) dx += 1;
+        if (keys.ArrowUp || keys.KeyW || keys.w) dy -= 1;
+        if (keys.ArrowDown || keys.KeyS || keys.s) dy += 1;
+      }
 
       const norm = this._normalizeAxis(dx, dy);
       this.x += norm.dx * this.speed * dt;
